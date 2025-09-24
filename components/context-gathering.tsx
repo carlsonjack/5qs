@@ -29,11 +29,13 @@ import {
 interface ContextGatheringProps {
   onComplete: (contextData: any) => void;
   onSkip: () => void;
+  onDataUpdate?: (contextData: any) => void; // New callback for immediate sidebar updates
 }
 
 export function ContextGathering({
   onComplete,
   onSkip,
+  onDataUpdate,
 }: ContextGatheringProps) {
   const [financialData, setFinancialData] = useState<any>(null);
   const [websiteData, setWebsiteData] = useState<any>(null);
@@ -46,6 +48,16 @@ export function ContextGathering({
       title: "Financial data processed",
       description: "Your financial data has been analyzed successfully.",
     });
+    
+    // Update sidebar immediately
+    if (onDataUpdate) {
+      const contextData = {
+        ...(financialData || {}),
+        ...(websiteData || {}),
+        ...data,
+      };
+      onDataUpdate(contextData);
+    }
   };
 
   const handleWebsiteProcessed = (data: any) => {
@@ -54,6 +66,16 @@ export function ContextGathering({
       title: "Website analyzed successfully! 🎉",
       description: "We've extracted key business insights from your website.",
     });
+    
+    // Update sidebar immediately
+    if (onDataUpdate) {
+      const contextData = {
+        ...(financialData || {}),
+        ...(websiteData || {}),
+        ...data,
+      };
+      onDataUpdate(contextData);
+    }
   };
 
   const handleError = (message: string) => {
@@ -191,20 +213,7 @@ export function ContextGathering({
                 )}
               </div>
 
-              {hasAnalysisData ? (
-                <div className="border rounded-lg p-4 bg-green-50 dark:bg-green-900/20">
-                  <div className="flex items-center gap-2 text-green-700 dark:text-green-400">
-                    <CheckCircle className="w-4 h-4" />
-                    <span className="text-sm font-medium">
-                      Data Successfully Analyzed
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Your business insights will be used to personalize the AI
-                    conversation
-                  </p>
-                </div>
-              ) : (
+              {!hasAnalysisData && (
                 <div className="border rounded-lg p-8 text-center text-muted-foreground">
                   <Building2 className="w-8 h-8 mx-auto mb-2 opacity-50" />
                   <p className="text-sm">

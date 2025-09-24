@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Moon, Sun, RotateCcw, Loader2 } from "lucide-react";
+import { Moon, Sun, RotateCcw, Loader2, CheckCircle } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useToast } from "@/hooks/use-toast";
 import { Stepper } from "./stepper";
@@ -488,6 +488,36 @@ Based on our conversation, your business has significant opportunities for growt
             <ContextGathering
               onComplete={handleContextGatheringComplete}
               onSkip={handleContextGatheringSkip}
+              onDataUpdate={(data) => {
+                // Update context summary immediately for sidebar
+                const initialContext: Partial<ContextSummary> = {
+                  businessType:
+                    data.businessType ||
+                    data.productsServices ||
+                    "Not yet specified",
+                  painPoints:
+                    data.cashFlowRisks ||
+                    data.marketingWeaknesses ||
+                    "Not yet specified",
+                  goals: 
+                    data.marketingStrengths ||
+                    data.goals ||
+                    "Not yet specified",
+                  dataAvailable: 
+                    data.revenueTrend || 
+                    data.dataAvailable ||
+                    "Not yet specified",
+                  priorTechUse: 
+                    data.techStack || 
+                    data.priorTechUse ||
+                    "Not yet specified",
+                  growthIntent: 
+                    data.customerSegment ? `Targeting: ${data.customerSegment}` :
+                    data.growthIntent ||
+                    "Not yet specified",
+                };
+                setContextSummary(initialContext as ContextSummary);
+              }}
             />
           ) : businessPlanMarkdown ? (
             // ✅ Show business plan viewer
@@ -541,8 +571,23 @@ Based on our conversation, your business has significant opportunities for growt
       </div>
 
       {/* Right Sidebar - Business Profile */}
-      <div className="hidden xl:flex w-80 border-l bg-card p-6">
+      <div className="hidden xl:flex w-80 border-l bg-card p-6 flex-col">
         <BusinessProfile contextSummary={contextSummary} />
+        
+        {/* Success Message - Only show when we have analysis data */}
+        {contextSummary && (
+          <div className="mt-6 border rounded-lg p-4 bg-green-50 dark:bg-green-900/20">
+            <div className="flex items-center gap-2 text-green-700 dark:text-green-400">
+              <CheckCircle className="w-4 h-4" />
+              <span className="text-sm font-medium">
+                Data Successfully Analyzed
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Your business insights will be used to personalize the AI conversation
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

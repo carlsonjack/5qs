@@ -357,7 +357,9 @@ export async function POST(req: NextRequest) {
       }
 
       // Generate screenshot URL using a free service that doesn't require API key
-      const screenshotUrl = `https://mini.s-shot.ru/1280x720/PNG/1280/Z100/?${encodeURIComponent(url)}`;
+      const screenshotUrl = `https://mini.s-shot.ru/1280x720/PNG/1280/Z100/?${encodeURIComponent(
+        url
+      )}`;
 
       return NextResponse.json({
         productsServices: businessType,
@@ -409,7 +411,9 @@ export async function POST(req: NextRequest) {
       );
 
       // Generate screenshot URL using a free service that doesn't require API key
-      const screenshotUrl = `https://mini.s-shot.ru/1280x720/PNG/1280/Z100/?${encodeURIComponent(url)}`;
+      const screenshotUrl = `https://mini.s-shot.ru/1280x720/PNG/1280/Z100/?${encodeURIComponent(
+        url
+      )}`;
 
       analysisResult = {
         productsServices: hasProducts

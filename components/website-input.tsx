@@ -204,9 +204,6 @@ export function WebsiteInput({
 
             {screenshotUrl && (
               <div className="space-y-2">
-                <p className="text-xs font-medium text-muted-foreground">
-                  Website Screenshot:
-                </p>
                 <div className="border rounded-lg overflow-hidden">
                   <img
                     src={screenshotUrl}
@@ -218,9 +215,6 @@ export function WebsiteInput({
                     }}
                   />
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  📸 Proof we analyzed your actual website
-                </p>
               </div>
             )}
           </CardContent>
