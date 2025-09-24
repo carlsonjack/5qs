@@ -356,6 +356,9 @@ export async function POST(req: NextRequest) {
         marketingWeaknesses = "Pricing transparency could be improved";
       }
 
+      // Generate screenshot URL using a screenshot service
+      const screenshotUrl = `https://api.screenshotone.com/take?access_key=${process.env.SCREENSHOT_API_KEY || 'demo'}&url=${encodeURIComponent(url)}&viewport_width=1280&viewport_height=720&device_scale_factor=1&format=png&image_quality=80&block_ads=true&block_cookie_banners=true&block_banners_by_heuristics=true&block_trackers=true&delay=2&timeout=10`;
+
       return NextResponse.json({
         productsServices: businessType,
         customerSegment: customerSegment,
@@ -363,6 +366,7 @@ export async function POST(req: NextRequest) {
         marketingStrengths: marketingStrengths,
         marketingWeaknesses: marketingWeaknesses,
         contentSample: websiteContent.substring(0, 200) + "...",
+        screenshotUrl: screenshotUrl,
         fallback: true,
       });
     }
@@ -404,6 +408,9 @@ export async function POST(req: NextRequest) {
         websiteContent
       );
 
+      // Generate screenshot URL using a screenshot service
+      const screenshotUrl = `https://api.screenshotone.com/take?access_key=${process.env.SCREENSHOT_API_KEY || 'demo'}&url=${encodeURIComponent(url)}&viewport_width=1280&viewport_height=720&device_scale_factor=1&format=png&image_quality=80&block_ads=true&block_cookie_banners=true&block_banners_by_heuristics=true&block_trackers=true&delay=2&timeout=10`;
+
       analysisResult = {
         productsServices: hasProducts
           ? "Products/services mentioned on website"
@@ -417,6 +424,7 @@ export async function POST(req: NextRequest) {
         marketingStrengths: "Professional website presence",
         marketingWeaknesses: "Limited detailed analysis available",
         contentSample: websiteContent.substring(0, 200) + "...", // Include sample for debugging
+        screenshotUrl: screenshotUrl,
       };
     }
 

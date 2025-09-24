@@ -84,22 +84,21 @@ export function ChatInterface() {
         contextData.cashFlowRisks ||
         contextData.marketingWeaknesses ||
         "Not yet specified",
-      goals: 
+      goals:
         contextData.marketingStrengths ||
         contextData.goals ||
         "Not yet specified",
-      dataAvailable: 
-        contextData.revenueTrend || 
+      dataAvailable:
+        contextData.revenueTrend ||
         contextData.dataAvailable ||
         "Not yet specified",
-      priorTechUse: 
-        contextData.techStack || 
+      priorTechUse:
+        contextData.techStack ||
         contextData.priorTechUse ||
         "Not yet specified",
-      growthIntent: 
-        contextData.customerSegment ? `Targeting: ${contextData.customerSegment}` :
-        contextData.growthIntent ||
-        "Not yet specified",
+      growthIntent: contextData.customerSegment
+        ? `Targeting: ${contextData.customerSegment}`
+        : contextData.growthIntent || "Not yet specified",
     };
 
     // Add any additional fields from the analysis

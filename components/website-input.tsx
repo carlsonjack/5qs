@@ -20,6 +20,7 @@ export function WebsiteInput({ onWebsiteProcessed, onError }: WebsiteInputProps)
   const [processedUrl, setProcessedUrl] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [analysisStatus, setAnalysisStatus] = useState("")
+  const [screenshotUrl, setScreenshotUrl] = useState<string | null>(null)
 
   const isValidUrl = (urlString: string) => {
     try {
@@ -80,6 +81,7 @@ export function WebsiteInput({ onWebsiteProcessed, onError }: WebsiteInputProps)
       onWebsiteProcessed(data)
       setIsProcessed(true)
       setProcessedUrl(normalizedUrl)
+      setScreenshotUrl(data.screenshotUrl || null)
     } catch (error) {
       console.error("Error analyzing website:", error)
       const errorMsg = error instanceof Error ? error.message : "Failed to analyze website. Please try again."
@@ -97,6 +99,7 @@ export function WebsiteInput({ onWebsiteProcessed, onError }: WebsiteInputProps)
     setProcessedUrl("")
     setError(null)
     setAnalysisStatus("")
+    setScreenshotUrl(null)
   }
 
   return (
@@ -157,7 +160,7 @@ export function WebsiteInput({ onWebsiteProcessed, onError }: WebsiteInputProps)
         </>
       ) : (
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-4 space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3">
                 <Globe className="h-5 w-5 text-primary" />
@@ -170,6 +173,26 @@ export function WebsiteInput({ onWebsiteProcessed, onError }: WebsiteInputProps)
                 <X className="h-4 w-4" />
               </Button>
             </div>
+            
+            {screenshotUrl && (
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">Website Screenshot:</p>
+                <div className="border rounded-lg overflow-hidden">
+                  <img 
+                    src={screenshotUrl} 
+                    alt={`Screenshot of ${processedUrl}`}
+                    className="w-full h-auto max-h-64 object-cover"
+                    onError={(e) => {
+                      console.log("Screenshot failed to load, hiding image");
+                      e.currentTarget.style.display = 'none';
+                    }}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  📸 Proof we analyzed your actual website
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
