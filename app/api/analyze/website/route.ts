@@ -275,9 +275,13 @@ export async function POST(req: NextRequest) {
     if (!analysisResponse) {
       console.log("NVIDIA API failed, using fallback analysis");
       // Use fallback analysis instead of throwing error
-      const hasProducts = /product|service|solution|offer/i.test(websiteContent);
+      const hasProducts = /product|service|solution|offer/i.test(
+        websiteContent
+      );
       const hasContact = /contact|about|team|company/i.test(websiteContent);
-      const hasTech = /api|integration|software|platform|technology/i.test(websiteContent);
+      const hasTech = /api|integration|software|platform|technology/i.test(
+        websiteContent
+      );
       const hasPricing = /price|cost|fee|subscription/i.test(websiteContent);
 
       return NextResponse.json({

@@ -234,8 +234,22 @@ This is a general template. For a fully personalized business plan based on your
 }
 
 export async function POST(req: NextRequest) {
+  let messages, currentStep, initialContext;
+  
   try {
-    const { messages, currentStep, initialContext } = await req.json();
+    const body = await req.json();
+    messages = body.messages;
+    currentStep = body.currentStep;
+    initialContext = body.initialContext;
+  } catch (parseError) {
+    console.error("Error parsing request body:", parseError);
+    return NextResponse.json(
+      { error: "Invalid request body" },
+      { status: 400 }
+    );
+  }
+
+  try {
 
     console.log(
       `Processing request - Step: ${currentStep}, Messages: ${messages.length}`
@@ -370,10 +384,9 @@ ${
       "Excellent insights! For my final question, if you could achieve one major goal for your business in the next 12 months, what would it be and why is it important to you?",
     ];
 
-    const { currentStep } = await req.json();
     const fallbackMessage =
       fallbackResponses[
-        Math.min(currentStep - 1, fallbackResponses.length - 1)
+        Math.min((currentStep || 1) - 1, fallbackResponses.length - 1)
       ];
 
     return NextResponse.json({
