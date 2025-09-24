@@ -12,11 +12,7 @@ import {
 import { FileUpload } from "./file-upload";
 import { WebsiteInput } from "./website-input";
 import { useToast } from "@/hooks/use-toast";
-import {
-  ArrowRight,
-  Loader2,
-  CheckCircle,
-} from "lucide-react";
+import { ArrowRight, Loader2, CheckCircle } from "lucide-react";
 
 interface ContextGatheringProps {
   onComplete: (contextData: any) => void;
@@ -78,7 +74,6 @@ export function ContextGathering({
     });
   };
 
-
   const handleSubmit = () => {
     setIsSubmitting(true);
 
@@ -115,29 +110,26 @@ export function ContextGathering({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="space-y-6">
-              <div className="space-y-2">
-                <h3 className="text-sm font-medium">
-                  Upload Financial Statement
-                </h3>
-                <FileUpload
-                  onFileProcessed={handleFileProcessed}
-                  onError={handleError}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <h3 className="text-sm font-medium">
-                  Analyze Your Business Website
-                </h3>
-                <WebsiteInput
-                  onWebsiteProcessed={handleWebsiteProcessed}
-                  onError={handleError}
-                />
-              </div>
+          <div className="max-w-2xl mx-auto space-y-6">
+            <div className="space-y-2">
+              <h3 className="text-sm font-medium">
+                Upload Financial Statement
+              </h3>
+              <FileUpload
+                onFileProcessed={handleFileProcessed}
+                onError={handleError}
+              />
             </div>
 
+            <div className="space-y-2">
+              <h3 className="text-sm font-medium">
+                Analyze Your Business Website
+              </h3>
+              <WebsiteInput
+                onWebsiteProcessed={handleWebsiteProcessed}
+                onError={handleError}
+              />
+            </div>
           </div>
 
           <div className="flex justify-between pt-4">
