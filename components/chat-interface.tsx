@@ -408,7 +408,11 @@ Based on our conversation, your business has significant opportunities for growt
             <ContextGathering onComplete={handleContextGatheringComplete} onSkip={handleContextGatheringSkip} />
           ) : businessPlanMarkdown ? (
             // ✅ Show business plan viewer
-            <BusinessPlanViewer markdown={businessPlanMarkdown} onRestart={resetChat} />
+            <BusinessPlanViewer 
+              markdown={businessPlanMarkdown} 
+              onRestart={resetChat} 
+              contextSummary={contextSummary}
+            />
           ) : (
             <div className="p-4">
               {messages.map((message) => (

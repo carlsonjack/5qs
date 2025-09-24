@@ -3,21 +3,62 @@
 import { useState, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Copy, Download, FileText, Check, Loader2 } from "lucide-react"
+import { Copy, Download, FileText, Check, Loader2, Lock } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import ReactMarkdown from "react-markdown"
 import Image from "next/image"
+import { EmailGate } from "@/components/email-gate"
 
 interface BusinessPlanViewerProps {
   markdown: string
   onRestart: () => void
+  contextSummary?: any
 }
 
-export function BusinessPlanViewer({ markdown, onRestart }: BusinessPlanViewerProps) {
+export function BusinessPlanViewer({ markdown, onRestart, contextSummary }: BusinessPlanViewerProps) {
   const [copied, setCopied] = useState(false)
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false)
+  const [isEmailSubmitted, setIsEmailSubmitted] = useState(false)
+  const [isSubmittingEmail, setIsSubmittingEmail] = useState(false)
   const { toast } = useToast()
   const contentRef = useRef<HTMLDivElement>(null)
+
+  // Split the markdown to show only the first section as preview
+  const getPreviewContent = (fullMarkdown: string) => {
+    const sections = fullMarkdown.split(/\n(?=##)/)
+    if (sections.length > 1) {
+      return sections[0] + "\n\n" + sections[1] // Show first two sections
+    }
+    return fullMarkdown.substring(0, 1000) + "..."
+  }
+
+  const handleEmailSubmit = async (email: string) => {
+    setIsSubmittingEmail(true)
+    try {
+      const response = await fetch('/api/send-plan', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email,
+          businessPlan: markdown,
+          contextSummary,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to send email')
+      }
+
+      setIsEmailSubmitted(true)
+    } catch (error) {
+      console.error('Error sending email:', error)
+      throw error
+    } finally {
+      setIsSubmittingEmail(false)
+    }
+  }
 
   const handleCopy = async () => {
     try {
@@ -173,71 +214,136 @@ export function BusinessPlanViewer({ markdown, onRestart }: BusinessPlanViewerPr
           <h2 className="text-2xl font-bold text-primary">Your Business Plan</h2>
         </div>
         <div className="flex space-x-2">
-          <Button variant="outline" size="sm" onClick={handleCopy}>
-            {copied ? <Check className="h-4 w-4 mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
-            {copied ? "Copied" : "Copy Text"}
-          </Button>
-
-          <Button variant="outline" size="sm" onClick={generatePDF} disabled={isGeneratingPdf}>
-            {isGeneratingPdf ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Generating...
-              </>
-            ) : (
-              <>
-                <FileText className="h-4 w-4 mr-2" />
-                Download PDF
-              </>
-            )}
-          </Button>
-
-          <Button variant="outline" size="sm" onClick={handleDownloadMarkdown}>
-            <Download className="h-4 w-4 mr-2" />
-            Download MD
-          </Button>
-
           <Button variant="default" size="sm" onClick={onRestart} className="bg-primary hover:bg-primary/90">
             Start Over
           </Button>
         </div>
       </div>
 
-      <Card className="w-full">
-        <CardHeader className="bg-muted/50 pb-4">
-          <CardTitle className="text-lg">AI-Generated Business Plan</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Download as PDF for professional presentation or markdown for editing
-          </p>
-        </CardHeader>
-        <CardContent className="pt-6 pb-8 px-6">
-          <div ref={contentRef} className="prose dark:prose-invert max-w-none">
-            <ReactMarkdown
-              components={{
-                // Custom components for better PDF rendering
-                h1: ({ children }) => (
-                  <h1 className="text-3xl font-bold mb-4 pb-2 border-b-2 border-gray-300">{children}</h1>
-                ),
-                h2: ({ children }) => <h2 className="text-2xl font-semibold mb-3 mt-6">{children}</h2>,
-                h3: ({ children }) => <h3 className="text-xl font-semibold mb-2 mt-4">{children}</h3>,
-                ul: ({ children }) => <ul className="list-disc pl-6 mb-4 space-y-1">{children}</ul>,
-                ol: ({ children }) => <ol className="list-decimal pl-6 mb-4 space-y-1">{children}</ol>,
-                p: ({ children }) => <p className="mb-3 leading-relaxed">{children}</p>,
-                strong: ({ children }) => (
-                  <strong className="font-semibold text-gray-900 dark:text-gray-100">{children}</strong>
-                ),
-                blockquote: ({ children }) => (
-                  <blockquote className="border-l-4 border-gray-300 pl-4 italic my-4 text-gray-600 dark:text-gray-400">
-                    {children}
-                  </blockquote>
-                ),
-              }}
-            >
-              {markdown}
-            </ReactMarkdown>
-          </div>
-        </CardContent>
-      </Card>
+      {!isEmailSubmitted ? (
+        <div className="space-y-6">
+          {/* Preview Content */}
+          <Card className="w-full">
+            <CardHeader className="bg-muted/50 pb-4">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Lock className="h-5 w-5 text-amber-500" />
+                Business Plan Preview
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Here's a preview of your personalized AI business plan
+              </p>
+            </CardHeader>
+            <CardContent className="pt-6 pb-8 px-6">
+              <div className="prose dark:prose-invert max-w-none">
+                <ReactMarkdown
+                  components={{
+                    h1: ({ children }) => (
+                      <h1 className="text-3xl font-bold mb-4 pb-2 border-b-2 border-gray-300">{children}</h1>
+                    ),
+                    h2: ({ children }) => <h2 className="text-2xl font-semibold mb-3 mt-6">{children}</h2>,
+                    h3: ({ children }) => <h3 className="text-xl font-semibold mb-2 mt-4">{children}</h3>,
+                    ul: ({ children }) => <ul className="list-disc pl-6 mb-4 space-y-1">{children}</ul>,
+                    ol: ({ children }) => <ol className="list-decimal pl-6 mb-4 space-y-1">{children}</ol>,
+                    p: ({ children }) => <p className="mb-3 leading-relaxed">{children}</p>,
+                    strong: ({ children }) => (
+                      <strong className="font-semibold text-gray-900 dark:text-gray-100">{children}</strong>
+                    ),
+                    blockquote: ({ children }) => (
+                      <blockquote className="border-l-4 border-gray-300 pl-4 italic my-4 text-gray-600 dark:text-gray-400">
+                        {children}
+                      </blockquote>
+                    ),
+                  }}
+                >
+                  {getPreviewContent(markdown)}
+                </ReactMarkdown>
+              </div>
+              
+              {/* Blur overlay */}
+              <div className="relative -mt-8 pt-8 bg-gradient-to-t from-background via-background/80 to-transparent">
+                <div className="absolute inset-0 backdrop-blur-sm"></div>
+                <div className="relative text-center py-8">
+                  <Lock className="h-8 w-8 mx-auto text-amber-500 mb-2" />
+                  <p className="text-sm text-muted-foreground">
+                    Enter your email to unlock the complete plan, download as PDF, and receive it in your inbox
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Email Gate */}
+          <EmailGate 
+            onEmailSubmit={handleEmailSubmit} 
+            isLoading={isSubmittingEmail}
+          />
+        </div>
+      ) : (
+        /* Full Content After Email Submission */
+        <Card className="w-full">
+          <CardHeader className="bg-green-50 dark:bg-green-900/20 pb-4">
+            <CardTitle className="text-lg flex items-center gap-2 text-green-700 dark:text-green-400">
+              <Check className="h-5 w-5" />
+              Complete Business Plan Unlocked!
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Your full business plan has been sent to your email. You can also download it below.
+            </p>
+          </CardHeader>
+          <CardContent className="pt-6 pb-8 px-6">
+            <div className="flex flex-wrap gap-2 mb-6">
+              <Button variant="outline" size="sm" onClick={handleCopy}>
+                {copied ? <Check className="h-4 w-4 mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
+                {copied ? "Copied" : "Copy Text"}
+              </Button>
+
+              <Button variant="outline" size="sm" onClick={generatePDF} disabled={isGeneratingPdf}>
+                {isGeneratingPdf ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <FileText className="h-4 w-4 mr-2" />
+                    Download PDF
+                  </>
+                )}
+              </Button>
+
+              <Button variant="outline" size="sm" onClick={handleDownloadMarkdown}>
+                <Download className="h-4 w-4 mr-2" />
+                Download MD
+              </Button>
+            </div>
+
+            <div ref={contentRef} className="prose dark:prose-invert max-w-none">
+              <ReactMarkdown
+                components={{
+                  h1: ({ children }) => (
+                    <h1 className="text-3xl font-bold mb-4 pb-2 border-b-2 border-gray-300">{children}</h1>
+                  ),
+                  h2: ({ children }) => <h2 className="text-2xl font-semibold mb-3 mt-6">{children}</h2>,
+                  h3: ({ children }) => <h3 className="text-xl font-semibold mb-2 mt-4">{children}</h3>,
+                  ul: ({ children }) => <ul className="list-disc pl-6 mb-4 space-y-1">{children}</ul>,
+                  ol: ({ children }) => <ol className="list-decimal pl-6 mb-4 space-y-1">{children}</ol>,
+                  p: ({ children }) => <p className="mb-3 leading-relaxed">{children}</p>,
+                  strong: ({ children }) => (
+                    <strong className="font-semibold text-gray-900 dark:text-gray-100">{children}</strong>
+                  ),
+                  blockquote: ({ children }) => (
+                    <blockquote className="border-l-4 border-gray-300 pl-4 italic my-4 text-gray-600 dark:text-gray-400">
+                      {children}
+                    </blockquote>
+                  ),
+                }}
+              >
+                {markdown}
+              </ReactMarkdown>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }
