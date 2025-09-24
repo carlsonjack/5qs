@@ -115,8 +115,8 @@ async function fetchWebsiteContent(url: string) {
       // Simple HTML text extraction (remove tags)
       const htmlContent = data.data.html;
       textContent = htmlContent
-        .replace(/<script[^>]*>.*?<\/script>/gis, "") // Remove scripts
-        .replace(/<style[^>]*>.*?<\/style>/gis, "") // Remove styles
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "") // Remove scripts
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "") // Remove styles
         .replace(/<[^>]*>/g, " ") // Remove HTML tags
         .replace(/\s+/g, " ") // Normalize whitespace
         .trim();
@@ -189,11 +189,11 @@ async function fetchWebsiteDirectly(url: string): Promise<string> {
 
     // Extract text from HTML
     const textContent = html
-      .replace(/<script[^>]*>.*?<\/script>/gis, "") // Remove scripts
-      .replace(/<style[^>]*>.*?<\/style>/gis, "") // Remove styles
-      .replace(/<nav[^>]*>.*?<\/nav>/gis, "") // Remove navigation
-      .replace(/<header[^>]*>.*?<\/header>/gis, "") // Remove header
-      .replace(/<footer[^>]*>.*?<\/footer>/gis, "") // Remove footer
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "") // Remove scripts
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "") // Remove styles
+      .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, "") // Remove navigation
+      .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, "") // Remove header
+      .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, "") // Remove footer
       .replace(/<[^>]*>/g, " ") // Remove remaining HTML tags
       .replace(/\s+/g, " ") // Normalize whitespace
       .trim();

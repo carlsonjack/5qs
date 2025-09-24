@@ -51,7 +51,7 @@ async function extractTextFromPDF(arrayBuffer: ArrayBuffer): Promise<string> {
     const text = decoder.decode(uint8Array);
 
     // Look for text content between stream objects
-    const textMatches = text.match(/stream\s*(.*?)\s*endstream/gs);
+    const textMatches = text.match(/stream\s*([\s\S]*?)\s*endstream/g);
     let extractedText = "";
 
     if (textMatches) {
