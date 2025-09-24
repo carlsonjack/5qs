@@ -356,8 +356,8 @@ export async function POST(req: NextRequest) {
         marketingWeaknesses = "Pricing transparency could be improved";
       }
 
-      // Generate screenshot URL using a free screenshot service
-      const screenshotUrl = `https://api.screenshotmachine.com?key=demo&url=${encodeURIComponent(url)}&dimension=1280x720&format=png&cacheLimit=0&timeout=10000`;
+      // Generate screenshot URL using a free service that doesn't require API key
+      const screenshotUrl = `https://mini.s-shot.ru/1280x720/PNG/1280/Z100/?${encodeURIComponent(url)}`;
 
       return NextResponse.json({
         productsServices: businessType,
@@ -408,8 +408,8 @@ export async function POST(req: NextRequest) {
         websiteContent
       );
 
-      // Generate screenshot URL using a free screenshot service
-      const screenshotUrl = `https://api.screenshotmachine.com?key=demo&url=${encodeURIComponent(url)}&dimension=1280x720&format=png&cacheLimit=0&timeout=10000`;
+      // Generate screenshot URL using a free service that doesn't require API key
+      const screenshotUrl = `https://mini.s-shot.ru/1280x720/PNG/1280/Z100/?${encodeURIComponent(url)}`;
 
       analysisResult = {
         productsServices: hasProducts
