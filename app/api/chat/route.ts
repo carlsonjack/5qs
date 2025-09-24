@@ -235,7 +235,7 @@ This is a general template. For a fully personalized business plan based on your
 
 export async function POST(req: NextRequest) {
   let messages, currentStep, initialContext;
-  
+
   try {
     const body = await req.json();
     messages = body.messages;
@@ -250,7 +250,6 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-
     console.log(
       `Processing request - Step: ${currentStep}, Messages: ${messages.length}`
     );

@@ -273,31 +273,69 @@ export async function POST(req: NextRequest) {
     }
 
     if (!analysisResponse) {
-      console.log("NVIDIA API failed, using fallback analysis");
-      // Use fallback analysis instead of throwing error
-      const hasProducts = /product|service|solution|offer/i.test(
-        websiteContent
-      );
-      const hasContact = /contact|about|team|company/i.test(websiteContent);
-      const hasTech = /api|integration|software|platform|technology/i.test(
-        websiteContent
-      );
-      const hasPricing = /price|cost|fee|subscription/i.test(websiteContent);
+      console.log("NVIDIA API failed, using enhanced fallback analysis");
+      
+      // Enhanced fallback analysis with more specific insights
+      const content = websiteContent.toLowerCase();
+      
+      // Extract business type from content patterns
+      let businessType = "Business Entity";
+      if (content.includes("auction") || content.includes("bid")) {
+        businessType = "Online Auction Platform";
+      } else if (content.includes("car") || content.includes("vehicle") || content.includes("automotive")) {
+        businessType = "Automotive Marketplace";
+      } else if (content.includes("ecommerce") || content.includes("shop") || content.includes("store")) {
+        businessType = "E-commerce Platform";
+      } else if (content.includes("service") || content.includes("consulting")) {
+        businessType = "Service Provider";
+      } else if (content.includes("software") || content.includes("app") || content.includes("platform")) {
+        businessType = "Software/Technology Company";
+      }
+
+      // Extract customer segment
+      let customerSegment = "General audience";
+      if (content.includes("collector") || content.includes("enthusiast")) {
+        customerSegment = "Collectors and Enthusiasts";
+      } else if (content.includes("dealer") || content.includes("professional")) {
+        customerSegment = "Professional Dealers";
+      } else if (content.includes("business") || content.includes("enterprise")) {
+        customerSegment = "Business/Enterprise";
+      }
+
+      // Extract tech stack indicators
+      let techStack = "Standard web technologies";
+      if (content.includes("api") || content.includes("integration")) {
+        techStack = "API-driven platform with integrations";
+      } else if (content.includes("mobile") || content.includes("app")) {
+        techStack = "Mobile-responsive web platform";
+      } else if (content.includes("real-time") || content.includes("live")) {
+        techStack = "Real-time web application";
+      }
+
+      // Extract marketing strengths
+      let marketingStrengths = "Professional website presence";
+      if (content.includes("community") || content.includes("forum")) {
+        marketingStrengths = "Strong community engagement and user-generated content";
+      } else if (content.includes("testimonial") || content.includes("review")) {
+        marketingStrengths = "Social proof through testimonials and reviews";
+      } else if (content.includes("blog") || content.includes("news")) {
+        marketingStrengths = "Content marketing and thought leadership";
+      }
+
+      // Extract potential weaknesses
+      let marketingWeaknesses = "Limited detailed analysis available";
+      if (!content.includes("contact") && !content.includes("about")) {
+        marketingWeaknesses = "Limited contact information and company transparency";
+      } else if (!content.includes("pricing") && !content.includes("cost")) {
+        marketingWeaknesses = "Pricing transparency could be improved";
+      }
 
       return NextResponse.json({
-        productsServices: hasProducts
-          ? "Products/services mentioned on website"
-          : "Business offerings not clearly specified",
-        customerSegment: hasContact
-          ? "Professional business audience"
-          : "General audience",
-        techStack: hasTech
-          ? "Technology-focused business"
-          : "Standard web presence",
-        marketingStrengths: hasPricing
-          ? "Clear pricing and value proposition"
-          : "Professional website presence",
-        marketingWeaknesses: "Analysis limited due to API unavailability",
+        productsServices: businessType,
+        customerSegment: customerSegment,
+        techStack: techStack,
+        marketingStrengths: marketingStrengths,
+        marketingWeaknesses: marketingWeaknesses,
         contentSample: websiteContent.substring(0, 200) + "...",
         fallback: true,
       });
