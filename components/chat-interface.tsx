@@ -84,12 +84,25 @@ export function ChatInterface() {
         contextData.cashFlowRisks ||
         contextData.marketingWeaknesses ||
         "Not yet specified",
-      goals: "Not yet specified",
-      dataAvailable: contextData.revenueTrend || "Not yet specified",
-      priorTechUse: contextData.techStack || "Not yet specified",
-      growthIntent: "Not yet specified",
+      goals: 
+        contextData.marketingStrengths ||
+        contextData.goals ||
+        "Not yet specified",
+      dataAvailable: 
+        contextData.revenueTrend || 
+        contextData.dataAvailable ||
+        "Not yet specified",
+      priorTechUse: 
+        contextData.techStack || 
+        contextData.priorTechUse ||
+        "Not yet specified",
+      growthIntent: 
+        contextData.customerSegment ? `Targeting: ${contextData.customerSegment}` :
+        contextData.growthIntent ||
+        "Not yet specified",
     };
 
+    // Add any additional fields from the analysis
     Object.keys(contextData).forEach((key) => {
       if (!Object.keys(initialContext).includes(key)) {
         initialContext[key] = contextData[key];

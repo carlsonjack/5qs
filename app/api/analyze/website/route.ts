@@ -274,21 +274,36 @@ export async function POST(req: NextRequest) {
 
     if (!analysisResponse) {
       console.log("NVIDIA API failed, using enhanced fallback analysis");
-      
+
       // Enhanced fallback analysis with more specific insights
       const content = websiteContent.toLowerCase();
-      
+
       // Extract business type from content patterns
       let businessType = "Business Entity";
       if (content.includes("auction") || content.includes("bid")) {
         businessType = "Online Auction Platform";
-      } else if (content.includes("car") || content.includes("vehicle") || content.includes("automotive")) {
+      } else if (
+        content.includes("car") ||
+        content.includes("vehicle") ||
+        content.includes("automotive")
+      ) {
         businessType = "Automotive Marketplace";
-      } else if (content.includes("ecommerce") || content.includes("shop") || content.includes("store")) {
+      } else if (
+        content.includes("ecommerce") ||
+        content.includes("shop") ||
+        content.includes("store")
+      ) {
         businessType = "E-commerce Platform";
-      } else if (content.includes("service") || content.includes("consulting")) {
+      } else if (
+        content.includes("service") ||
+        content.includes("consulting")
+      ) {
         businessType = "Service Provider";
-      } else if (content.includes("software") || content.includes("app") || content.includes("platform")) {
+      } else if (
+        content.includes("software") ||
+        content.includes("app") ||
+        content.includes("platform")
+      ) {
         businessType = "Software/Technology Company";
       }
 
@@ -296,9 +311,15 @@ export async function POST(req: NextRequest) {
       let customerSegment = "General audience";
       if (content.includes("collector") || content.includes("enthusiast")) {
         customerSegment = "Collectors and Enthusiasts";
-      } else if (content.includes("dealer") || content.includes("professional")) {
+      } else if (
+        content.includes("dealer") ||
+        content.includes("professional")
+      ) {
         customerSegment = "Professional Dealers";
-      } else if (content.includes("business") || content.includes("enterprise")) {
+      } else if (
+        content.includes("business") ||
+        content.includes("enterprise")
+      ) {
         customerSegment = "Business/Enterprise";
       }
 
@@ -315,8 +336,12 @@ export async function POST(req: NextRequest) {
       // Extract marketing strengths
       let marketingStrengths = "Professional website presence";
       if (content.includes("community") || content.includes("forum")) {
-        marketingStrengths = "Strong community engagement and user-generated content";
-      } else if (content.includes("testimonial") || content.includes("review")) {
+        marketingStrengths =
+          "Strong community engagement and user-generated content";
+      } else if (
+        content.includes("testimonial") ||
+        content.includes("review")
+      ) {
         marketingStrengths = "Social proof through testimonials and reviews";
       } else if (content.includes("blog") || content.includes("news")) {
         marketingStrengths = "Content marketing and thought leadership";
@@ -325,7 +350,8 @@ export async function POST(req: NextRequest) {
       // Extract potential weaknesses
       let marketingWeaknesses = "Limited detailed analysis available";
       if (!content.includes("contact") && !content.includes("about")) {
-        marketingWeaknesses = "Limited contact information and company transparency";
+        marketingWeaknesses =
+          "Limited contact information and company transparency";
       } else if (!content.includes("pricing") && !content.includes("cost")) {
         marketingWeaknesses = "Pricing transparency could be improved";
       }

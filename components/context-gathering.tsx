@@ -142,29 +142,35 @@ export function ContextGathering({ onComplete, onSkip }: ContextGatheringProps) 
               </div>
             </div>
 
-            {/* Business Profile Preview */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-medium">Business Profile Preview</h3>
-                {hasAnalysisData && (
-                  <Badge variant="secondary" className="text-xs">
-                    <CheckCircle className="w-3 h-3 mr-1" />
-                    Analysis Complete
-                  </Badge>
-                )}
-              </div>
-              
-              {hasAnalysisData ? (
-                <div className="border rounded-lg p-4 bg-muted/30">
-                  <BusinessProfile contextSummary={businessProfileData} />
+                {/* Analysis Status */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-medium">Analysis Status</h3>
+                    {hasAnalysisData && (
+                      <Badge variant="secondary" className="text-xs">
+                        <CheckCircle className="w-3 h-3 mr-1" />
+                        Analysis Complete
+                      </Badge>
+                    )}
+                  </div>
+                  
+                  {hasAnalysisData ? (
+                    <div className="border rounded-lg p-4 bg-green-50 dark:bg-green-900/20">
+                      <div className="flex items-center gap-2 text-green-700 dark:text-green-400">
+                        <CheckCircle className="w-4 h-4" />
+                        <span className="text-sm font-medium">Data Successfully Analyzed</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Your business insights will be used to personalize the AI conversation
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="border rounded-lg p-8 text-center text-muted-foreground">
+                      <Building2 className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">Upload data or analyze your website to get personalized insights</p>
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div className="border rounded-lg p-8 text-center text-muted-foreground">
-                  <Building2 className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">Upload data or analyze your website to see insights here</p>
-                </div>
-              )}
-            </div>
           </div>
 
           <div className="flex justify-between pt-4">
