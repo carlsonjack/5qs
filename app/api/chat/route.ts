@@ -1,18 +1,24 @@
-import { type NextRequest, NextResponse } from "next/server"
+import { type NextRequest, NextResponse } from "next/server";
 
-const NVIDIA_API_KEY = "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"
-const NVIDIA_API_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
+const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY;
+const NVIDIA_API_URL =
+  process.env.NVIDIA_API_URL ||
+  "https://integrate.api.nvidia.com/v1/chat/completions";
 
 interface ContextSummary {
-  businessType: string
-  painPoints: string
-  goals: string
-  dataAvailable: string
-  priorTechUse: string
-  growthIntent: string
+  businessType: string;
+  painPoints: string;
+  goals: string;
+  dataAvailable: string;
+  priorTechUse: string;
+  growthIntent: string;
 }
 
 async function callNvidiaAPI(messages: any[], systemPrompt: string) {
+  if (!NVIDIA_API_KEY) {
+    throw new Error("NVIDIA_API_KEY environment variable is not set");
+  }
+
   const requestBody = {
     model: "nvidia/llama-3.1-nemotron-ultra-253b-v1",
     messages: [{ role: "system", content: systemPrompt }, ...messages],
@@ -22,7 +28,7 @@ async function callNvidiaAPI(messages: any[], systemPrompt: string) {
     frequency_penalty: 0,
     presence_penalty: 0,
     stream: false,
-  }
+  };
 
   const response = await fetch(NVIDIA_API_URL, {
     method: "POST",
@@ -32,18 +38,20 @@ async function callNvidiaAPI(messages: any[], systemPrompt: string) {
       Accept: "application/json",
     },
     body: JSON.stringify(requestBody),
-  })
+  });
 
   if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(`NVIDIA API error: ${response.status} - ${errorText}`)
+    const errorText = await response.text();
+    throw new Error(`NVIDIA API error: ${response.status} - ${errorText}`);
   }
 
-  const data = await response.json()
-  return data.choices?.[0]?.message?.content
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content;
 }
 
-async function generateContextSummary(messages: any[]): Promise<ContextSummary | null> {
+async function generateContextSummary(
+  messages: any[]
+): Promise<ContextSummary | null> {
   try {
     const summaryPrompt = `Analyze the following business conversation and extract key information into a JSON object. Only include information that has been explicitly mentioned or can be clearly inferred from the conversation.
 
@@ -59,46 +67,51 @@ Return ONLY a valid JSON object with this exact structure:
 
 If information for a field is not available, use "Not yet specified" as the value.
 
-Conversation to analyze:`
+Conversation to analyze:`;
 
-    const conversationText = messages.map((msg) => `${msg.role}: ${msg.content}`).join("\n")
+    const conversationText = messages
+      .map((msg) => `${msg.role}: ${msg.content}`)
+      .join("\n");
 
     const summaryMessages = [
       {
         role: "user",
         content: `${summaryPrompt}\n\n${conversationText}`,
       },
-    ]
+    ];
 
-    console.log("Generating context summary...")
+    console.log("Generating context summary...");
     const summaryResponse = await callNvidiaAPI(
       summaryMessages,
-      "You are a business analyst that extracts structured information from conversations. Return only valid JSON.",
-    )
+      "You are a business analyst that extracts structured information from conversations. Return only valid JSON."
+    );
 
     if (!summaryResponse) {
-      throw new Error("No summary response received")
+      throw new Error("No summary response received");
     }
 
     // Try to parse the JSON response
-    const jsonMatch = summaryResponse.match(/\{[\s\S]*\}/)
+    const jsonMatch = summaryResponse.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      throw new Error("No JSON found in response")
+      throw new Error("No JSON found in response");
     }
 
-    const parsedSummary = JSON.parse(jsonMatch[0])
-    console.log("Parsed summary:", parsedSummary)
+    const parsedSummary = JSON.parse(jsonMatch[0]);
+    console.log("Parsed summary:", parsedSummary);
 
-    return parsedSummary as ContextSummary
+    return parsedSummary as ContextSummary;
   } catch (error) {
-    console.error("Error generating context summary:", error)
-    return null
+    console.error("Error generating context summary:", error);
+    return null;
   }
 }
 
-async function generateBusinessPlan(messages: any[], contextSummary: ContextSummary | null): Promise<string> {
+async function generateBusinessPlan(
+  messages: any[],
+  contextSummary: ContextSummary | null
+): Promise<string> {
   try {
-    console.log("Triggering business plan generation")
+    console.log("Triggering business plan generation");
 
     const businessPlanPrompt = `Using the following JSON summary and user conversation, draft a comprehensive business plan in four parts: 
 
@@ -115,21 +128,24 @@ ${JSON.stringify(contextSummary, null, 2)}
 Conversation History:
 ${messages.map((msg) => `${msg.role}: ${msg.content}`).join("\n\n")}
 
-Format the business plan in markdown with clear headings, bullet points, and sections. Be specific and actionable.`
+Format the business plan in markdown with clear headings, bullet points, and sections. Be specific and actionable.`;
 
     const businessPlanResponse = await callNvidiaAPI(
       [{ role: "user", content: businessPlanPrompt }],
-      "You are an expert business consultant specializing in AI strategy for small and medium businesses. Create a practical, actionable business plan based on the conversation history. Use markdown formatting with clear sections and bullet points.",
-    )
+      "You are an expert business consultant specializing in AI strategy for small and medium businesses. Create a practical, actionable business plan based on the conversation history. Use markdown formatting with clear sections and bullet points."
+    );
 
     if (!businessPlanResponse) {
-      throw new Error("No business plan response received")
+      throw new Error("No business plan response received");
     }
 
-    console.log("Business plan generated successfully, length:", businessPlanResponse.length)
-    return businessPlanResponse
+    console.log(
+      "Business plan generated successfully, length:",
+      businessPlanResponse.length
+    );
+    return businessPlanResponse;
   } catch (error) {
-    console.error("Error generating business plan:", error)
+    console.error("Error generating business plan:", error);
 
     // Enhanced fallback plan with retry CTA
     return `# 🚀 Your Business Plan
@@ -213,32 +229,39 @@ This is a general template. For a fully personalized business plan based on your
 2. **Contact our support team** for a detailed consultation
 3. **Book a strategy session** with an AI business consultant
 
-*Your success is our priority. Let's build something amazing together!*`
+*Your success is our priority. Let's build something amazing together!*`;
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, currentStep, initialContext } = await req.json()
+    const { messages, currentStep, initialContext } = await req.json();
 
-    console.log(`Processing request - Step: ${currentStep}, Messages: ${messages.length}`)
+    console.log(
+      `Processing request - Step: ${currentStep}, Messages: ${messages.length}`
+    );
 
     // ✅ Check if we need to generate a business plan (after step 5)
-    const userMessages = messages.filter((msg: any) => msg.role === "user")
-    const isBusinessPlanStep = currentStep === 5 && userMessages.length >= 5
+    const userMessages = messages.filter((msg: any) => msg.role === "user");
+    const isBusinessPlanStep = currentStep === 5 && userMessages.length >= 5;
 
     if (isBusinessPlanStep) {
-      console.log("✅ Step 5 complete - triggering business plan generation...")
-      console.log("Triggering business plan generation")
+      console.log(
+        "✅ Step 5 complete - triggering business plan generation..."
+      );
+      console.log("Triggering business plan generation");
 
       try {
         // ✅ Generate or update the context summary
-        const contextSummary = await generateContextSummary(messages)
+        const contextSummary = await generateContextSummary(messages);
 
         // ✅ Generate the business plan
-        const businessPlanMarkdown = await generateBusinessPlan(messages, contextSummary || initialContext)
+        const businessPlanMarkdown = await generateBusinessPlan(
+          messages,
+          contextSummary || initialContext
+        );
 
-        console.log("✅ Business plan generation completed successfully")
+        console.log("✅ Business plan generation completed successfully");
 
         // ✅ Return both the context summary and business plan
         return NextResponse.json({
@@ -247,9 +270,9 @@ export async function POST(req: NextRequest) {
           contextSummary: contextSummary,
           businessPlanMarkdown: businessPlanMarkdown,
           isBusinessPlan: true, // Flag to help frontend identify this response
-        })
+        });
       } catch (planError) {
-        console.error("❌ Business plan generation failed:", planError)
+        console.error("❌ Business plan generation failed:", planError);
 
         // ✅ Fallback: Still return a business plan even if generation fails
         const fallbackPlan = `# 🚀 Your Business Plan
@@ -278,7 +301,7 @@ Based on our conversation, your business has significant opportunities for growt
 ---
 
 ## 🔄 Get Your Custom Plan
-**Restart the conversation** to generate a fully personalized business plan, or contact our team for detailed consultation.`
+**Restart the conversation** to generate a fully personalized business plan, or contact our team for detailed consultation.`;
 
         return NextResponse.json({
           message:
@@ -287,7 +310,7 @@ Based on our conversation, your business has significant opportunities for growt
           businessPlanMarkdown: fallbackPlan,
           isBusinessPlan: true,
           fallback: true,
-        })
+        });
       }
     }
 
@@ -309,27 +332,34 @@ Guidelines:
 - Be encouraging and supportive in tone
 - Be understanding of the end user's lack of AI knowledge
 
-${currentStep === 5 ? "This is the final question. After the user responds, we will generate their business plan." : ""}`
+${
+  currentStep === 5
+    ? "This is the final question. After the user responds, we will generate their business plan."
+    : ""
+}`;
 
-    console.log("Making request to NVIDIA API for conversation...")
+    console.log("Making request to NVIDIA API for conversation...");
 
     // Get the assistant response
-    const aiMessage = await callNvidiaAPI(messages, systemPrompt)
+    const aiMessage = await callNvidiaAPI(messages, systemPrompt);
 
     if (!aiMessage) {
-      throw new Error("No response from NVIDIA API")
+      throw new Error("No response from NVIDIA API");
     }
 
     // Generate context summary after getting the response
-    const updatedMessages = [...messages, { role: "assistant", content: aiMessage }]
-    const contextSummary = await generateContextSummary(updatedMessages)
+    const updatedMessages = [
+      ...messages,
+      { role: "assistant", content: aiMessage },
+    ];
+    const contextSummary = await generateContextSummary(updatedMessages);
 
     return NextResponse.json({
       message: aiMessage,
       contextSummary: contextSummary,
-    })
+    });
   } catch (error) {
-    console.error("Chat API error:", error)
+    console.error("Chat API error:", error);
 
     // Fallback response for development/testing
     const fallbackResponses = [
@@ -338,15 +368,18 @@ ${currentStep === 5 ? "This is the final question. After the user responds, we w
       "Thank you for sharing that insight. Now I'm curious about your customers - who is your ideal customer, and how do you currently reach them?",
       "Great perspective! Let's talk about your operations. What processes or systems in your business do you think could be improved or automated to save you time?",
       "Excellent insights! For my final question, if you could achieve one major goal for your business in the next 12 months, what would it be and why is it important to you?",
-    ]
+    ];
 
-    const { currentStep } = await req.json()
-    const fallbackMessage = fallbackResponses[Math.min(currentStep - 1, fallbackResponses.length - 1)]
+    const { currentStep } = await req.json();
+    const fallbackMessage =
+      fallbackResponses[
+        Math.min(currentStep - 1, fallbackResponses.length - 1)
+      ];
 
     return NextResponse.json({
       message: fallbackMessage,
       fallback: true,
       contextSummary: null,
-    })
+    });
   }
 }
