@@ -1,129 +1,136 @@
-"use client"
+"use client";
 
-import { useState, useRef } from "react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Copy, Download, FileText, Check, Loader2, Lock } from "lucide-react"
-import { useToast } from "@/hooks/use-toast"
-import ReactMarkdown from "react-markdown"
-import Image from "next/image"
-import { EmailGate } from "@/components/email-gate"
+import { useState, useRef } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Copy, Download, FileText, Check, Loader2, Lock } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import ReactMarkdown from "react-markdown";
+import Image from "next/image";
+import { EmailGate } from "@/components/email-gate";
 
 interface BusinessPlanViewerProps {
-  markdown: string
-  onRestart: () => void
-  contextSummary?: any
+  markdown: string;
+  onRestart: () => void;
+  contextSummary?: any;
 }
 
-export function BusinessPlanViewer({ markdown, onRestart, contextSummary }: BusinessPlanViewerProps) {
-  const [copied, setCopied] = useState(false)
-  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false)
-  const [isEmailSubmitted, setIsEmailSubmitted] = useState(false)
-  const [isSubmittingEmail, setIsSubmittingEmail] = useState(false)
-  const { toast } = useToast()
-  const contentRef = useRef<HTMLDivElement>(null)
+export function BusinessPlanViewer({
+  markdown,
+  onRestart,
+  contextSummary,
+}: BusinessPlanViewerProps) {
+  const [copied, setCopied] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [isEmailSubmitted, setIsEmailSubmitted] = useState(false);
+  const [isSubmittingEmail, setIsSubmittingEmail] = useState(false);
+  const { toast } = useToast();
+  const contentRef = useRef<HTMLDivElement>(null);
 
   // Split the markdown to show only the first section as preview
   const getPreviewContent = (fullMarkdown: string) => {
-    const sections = fullMarkdown.split(/\n(?=##)/)
+    const sections = fullMarkdown.split(/\n(?=##)/);
     if (sections.length > 1) {
-      return sections[0] + "\n\n" + sections[1] // Show first two sections
+      return sections[0] + "\n\n" + sections[1]; // Show first two sections
     }
-    return fullMarkdown.substring(0, 1000) + "..."
-  }
+    return fullMarkdown.substring(0, 1000) + "...";
+  };
 
   const handleEmailSubmit = async (email: string) => {
-    setIsSubmittingEmail(true)
+    setIsSubmittingEmail(true);
     try {
-      const response = await fetch('/api/send-plan', {
-        method: 'POST',
+      const response = await fetch("/api/send-plan", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           email,
           businessPlan: markdown,
           contextSummary,
         }),
-      })
+      });
 
       if (!response.ok) {
-        throw new Error('Failed to send email')
+        throw new Error("Failed to send email");
       }
 
-      setIsEmailSubmitted(true)
+      setIsEmailSubmitted(true);
     } catch (error) {
-      console.error('Error sending email:', error)
-      throw error
+      console.error("Error sending email:", error);
+      throw error;
     } finally {
-      setIsSubmittingEmail(false)
+      setIsSubmittingEmail(false);
     }
-  }
+  };
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(markdown)
-      setCopied(true)
+      await navigator.clipboard.writeText(markdown);
+      setCopied(true);
       toast({
         title: "Copied to clipboard",
         description: "Business plan has been copied to your clipboard",
-      })
-      setTimeout(() => setCopied(false), 2000)
+      });
+      setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       toast({
         title: "Copy failed",
         description: "Could not copy to clipboard. Please try again.",
         variant: "destructive",
-      })
+      });
     }
-  }
+  };
 
   const handleDownloadMarkdown = () => {
-    const blob = new Blob([markdown], { type: "text/plain" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = "business-plan.md"
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
+    const blob = new Blob([markdown], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "business-plan.md";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
 
     toast({
       title: "Markdown downloaded",
       description: "Your business plan markdown file is being downloaded",
-    })
-  }
+    });
+  };
 
   const generatePDF = async () => {
-    setIsGeneratingPdf(true)
+    setIsGeneratingPdf(true);
 
     try {
       // Dynamic import to avoid SSR issues
-      const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([import("jspdf"), import("html2canvas")])
+      const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
+        import("jspdf"),
+        import("html2canvas"),
+      ]);
 
       if (!contentRef.current) {
-        throw new Error("Content reference not found")
+        throw new Error("Content reference not found");
       }
 
       // Create a temporary container with better styling for PDF
-      const tempContainer = document.createElement("div")
-      tempContainer.style.position = "absolute"
-      tempContainer.style.left = "-9999px"
-      tempContainer.style.top = "0"
-      tempContainer.style.width = "210mm" // A4 width
-      tempContainer.style.padding = "20mm"
-      tempContainer.style.backgroundColor = "white"
-      tempContainer.style.fontFamily = "Arial, sans-serif"
-      tempContainer.style.fontSize = "12px"
-      tempContainer.style.lineHeight = "1.6"
-      tempContainer.style.color = "#000000"
+      const tempContainer = document.createElement("div");
+      tempContainer.style.position = "absolute";
+      tempContainer.style.left = "-9999px";
+      tempContainer.style.top = "0";
+      tempContainer.style.width = "210mm"; // A4 width
+      tempContainer.style.padding = "20mm";
+      tempContainer.style.backgroundColor = "white";
+      tempContainer.style.fontFamily = "Arial, sans-serif";
+      tempContainer.style.fontSize = "12px";
+      tempContainer.style.lineHeight = "1.6";
+      tempContainer.style.color = "#000000";
 
       // Clone the content and style it for PDF
-      const clonedContent = contentRef.current.cloneNode(true) as HTMLElement
+      const clonedContent = contentRef.current.cloneNode(true) as HTMLElement;
 
       // Apply PDF-specific styles
-      const styleElement = document.createElement("style")
+      const styleElement = document.createElement("style");
       styleElement.textContent = `
         h1 { font-size: 24px; margin: 20px 0 15px 0; color: #000; border-bottom: 2px solid #000; padding-bottom: 5px; }
         h2 { font-size: 20px; margin: 18px 0 12px 0; color: #000; }
@@ -138,11 +145,11 @@ export function BusinessPlanViewer({ markdown, onRestart, contextSummary }: Busi
         blockquote { border-left: 4px solid #ccc; margin: 10px 0; padding-left: 15px; font-style: italic; }
         hr { border: none; border-top: 1px solid #ccc; margin: 20px 0; }
         .prose { max-width: none !important; }
-      `
+      `;
 
-      tempContainer.appendChild(styleElement)
-      tempContainer.appendChild(clonedContent)
-      document.body.appendChild(tempContainer)
+      tempContainer.appendChild(styleElement);
+      tempContainer.appendChild(clonedContent);
+      document.body.appendChild(tempContainer);
 
       // Generate canvas from the styled content
       const canvas = await html2canvas(tempContainer, {
@@ -152,69 +159,83 @@ export function BusinessPlanViewer({ markdown, onRestart, contextSummary }: Busi
         backgroundColor: "#ffffff",
         width: tempContainer.scrollWidth,
         height: tempContainer.scrollHeight,
-      })
+      });
 
       // Remove temporary container
-      document.body.removeChild(tempContainer)
+      document.body.removeChild(tempContainer);
 
       // Create PDF
       const pdf = new jsPDF({
         orientation: "portrait",
         unit: "mm",
         format: "a4",
-      })
+      });
 
-      const imgData = canvas.toDataURL("image/png")
-      const imgWidth = 210 // A4 width in mm
-      const pageHeight = 297 // A4 height in mm
-      const imgHeight = (canvas.height * imgWidth) / canvas.width
-      let heightLeft = imgHeight
-      let position = 0
+      const imgData = canvas.toDataURL("image/png");
+      const imgWidth = 210; // A4 width in mm
+      const pageHeight = 297; // A4 height in mm
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let heightLeft = imgHeight;
+      let position = 0;
 
       // Add first page
-      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight)
-      heightLeft -= pageHeight
+      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
 
       // Add additional pages if content is longer than one page
       while (heightLeft >= 0) {
-        position = heightLeft - imgHeight
-        pdf.addPage()
-        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight)
-        heightLeft -= pageHeight
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
       }
 
       // Generate filename with timestamp
-      const timestamp = new Date().toISOString().split("T")[0]
-      const filename = `business-plan-${timestamp}.pdf`
+      const timestamp = new Date().toISOString().split("T")[0];
+      const filename = `business-plan-${timestamp}.pdf`;
 
       // Download the PDF
-      pdf.save(filename)
+      pdf.save(filename);
 
       toast({
         title: "PDF Generated! 📄",
         description: "Your business plan PDF has been downloaded successfully",
-      })
+      });
     } catch (error) {
-      console.error("Error generating PDF:", error)
+      console.error("Error generating PDF:", error);
       toast({
         title: "PDF Generation Failed",
-        description: "Could not generate PDF. Try downloading as markdown instead.",
+        description:
+          "Could not generate PDF. Try downloading as markdown instead.",
         variant: "destructive",
-      })
+      });
     } finally {
-      setIsGeneratingPdf(false)
+      setIsGeneratingPdf(false);
     }
-  }
+  };
 
   return (
     <div className="flex flex-col space-y-4 w-full max-w-4xl mx-auto p-4">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center space-x-3">
-          <Image src="/logo.png" alt="5Q Logo" width={40} height={40} className="rounded-lg" />
-          <h2 className="text-2xl font-bold text-primary">Your Business Plan</h2>
+          <Image
+            src="/logo.png"
+            alt="5Q Logo"
+            width={40}
+            height={40}
+            className="rounded-lg"
+          />
+          <h2 className="text-2xl font-bold text-primary">
+            Your Business Plan
+          </h2>
         </div>
         <div className="flex space-x-2">
-          <Button variant="default" size="sm" onClick={onRestart} className="bg-primary hover:bg-primary/90">
+          <Button
+            variant="default"
+            size="sm"
+            onClick={onRestart}
+            className="bg-primary hover:bg-primary/90"
+          >
             Start Over
           </Button>
         </div>
@@ -238,15 +259,37 @@ export function BusinessPlanViewer({ markdown, onRestart, contextSummary }: Busi
                 <ReactMarkdown
                   components={{
                     h1: ({ children }) => (
-                      <h1 className="text-3xl font-bold mb-4 pb-2 border-b-2 border-gray-300">{children}</h1>
+                      <h1 className="text-3xl font-bold mb-4 pb-2 border-b-2 border-gray-300">
+                        {children}
+                      </h1>
                     ),
-                    h2: ({ children }) => <h2 className="text-2xl font-semibold mb-3 mt-6">{children}</h2>,
-                    h3: ({ children }) => <h3 className="text-xl font-semibold mb-2 mt-4">{children}</h3>,
-                    ul: ({ children }) => <ul className="list-disc pl-6 mb-4 space-y-1">{children}</ul>,
-                    ol: ({ children }) => <ol className="list-decimal pl-6 mb-4 space-y-1">{children}</ol>,
-                    p: ({ children }) => <p className="mb-3 leading-relaxed">{children}</p>,
+                    h2: ({ children }) => (
+                      <h2 className="text-2xl font-semibold mb-3 mt-6">
+                        {children}
+                      </h2>
+                    ),
+                    h3: ({ children }) => (
+                      <h3 className="text-xl font-semibold mb-2 mt-4">
+                        {children}
+                      </h3>
+                    ),
+                    ul: ({ children }) => (
+                      <ul className="list-disc pl-6 mb-4 space-y-1">
+                        {children}
+                      </ul>
+                    ),
+                    ol: ({ children }) => (
+                      <ol className="list-decimal pl-6 mb-4 space-y-1">
+                        {children}
+                      </ol>
+                    ),
+                    p: ({ children }) => (
+                      <p className="mb-3 leading-relaxed">{children}</p>
+                    ),
                     strong: ({ children }) => (
-                      <strong className="font-semibold text-gray-900 dark:text-gray-100">{children}</strong>
+                      <strong className="font-semibold text-gray-900 dark:text-gray-100">
+                        {children}
+                      </strong>
                     ),
                     blockquote: ({ children }) => (
                       <blockquote className="border-l-4 border-gray-300 pl-4 italic my-4 text-gray-600 dark:text-gray-400">
@@ -258,14 +301,15 @@ export function BusinessPlanViewer({ markdown, onRestart, contextSummary }: Busi
                   {getPreviewContent(markdown)}
                 </ReactMarkdown>
               </div>
-              
+
               {/* Blur overlay */}
               <div className="relative -mt-8 pt-8 bg-gradient-to-t from-background via-background/80 to-transparent">
                 <div className="absolute inset-0 backdrop-blur-sm"></div>
                 <div className="relative text-center py-8">
                   <Lock className="h-8 w-8 mx-auto text-amber-500 mb-2" />
                   <p className="text-sm text-muted-foreground">
-                    Enter your email to unlock the complete plan, download as PDF, and receive it in your inbox
+                    Enter your email to unlock the complete plan, download as
+                    PDF, and receive it in your inbox
                   </p>
                 </div>
               </div>
@@ -273,8 +317,8 @@ export function BusinessPlanViewer({ markdown, onRestart, contextSummary }: Busi
           </Card>
 
           {/* Email Gate */}
-          <EmailGate 
-            onEmailSubmit={handleEmailSubmit} 
+          <EmailGate
+            onEmailSubmit={handleEmailSubmit}
             isLoading={isSubmittingEmail}
           />
         </div>
@@ -287,17 +331,27 @@ export function BusinessPlanViewer({ markdown, onRestart, contextSummary }: Busi
               Complete Business Plan Unlocked!
             </CardTitle>
             <p className="text-sm text-muted-foreground">
-              Your full business plan has been sent to your email. You can also download it below.
+              Your full business plan has been sent to your email. You can also
+              download it below.
             </p>
           </CardHeader>
           <CardContent className="pt-6 pb-8 px-6">
             <div className="flex flex-wrap gap-2 mb-6">
               <Button variant="outline" size="sm" onClick={handleCopy}>
-                {copied ? <Check className="h-4 w-4 mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
+                {copied ? (
+                  <Check className="h-4 w-4 mr-2" />
+                ) : (
+                  <Copy className="h-4 w-4 mr-2" />
+                )}
                 {copied ? "Copied" : "Copy Text"}
               </Button>
 
-              <Button variant="outline" size="sm" onClick={generatePDF} disabled={isGeneratingPdf}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={generatePDF}
+                disabled={isGeneratingPdf}
+              >
                 {isGeneratingPdf ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -311,25 +365,54 @@ export function BusinessPlanViewer({ markdown, onRestart, contextSummary }: Busi
                 )}
               </Button>
 
-              <Button variant="outline" size="sm" onClick={handleDownloadMarkdown}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDownloadMarkdown}
+              >
                 <Download className="h-4 w-4 mr-2" />
                 Download MD
               </Button>
             </div>
 
-            <div ref={contentRef} className="prose dark:prose-invert max-w-none">
+            <div
+              ref={contentRef}
+              className="prose dark:prose-invert max-w-none"
+            >
               <ReactMarkdown
                 components={{
                   h1: ({ children }) => (
-                    <h1 className="text-3xl font-bold mb-4 pb-2 border-b-2 border-gray-300">{children}</h1>
+                    <h1 className="text-3xl font-bold mb-4 pb-2 border-b-2 border-gray-300">
+                      {children}
+                    </h1>
                   ),
-                  h2: ({ children }) => <h2 className="text-2xl font-semibold mb-3 mt-6">{children}</h2>,
-                  h3: ({ children }) => <h3 className="text-xl font-semibold mb-2 mt-4">{children}</h3>,
-                  ul: ({ children }) => <ul className="list-disc pl-6 mb-4 space-y-1">{children}</ul>,
-                  ol: ({ children }) => <ol className="list-decimal pl-6 mb-4 space-y-1">{children}</ol>,
-                  p: ({ children }) => <p className="mb-3 leading-relaxed">{children}</p>,
+                  h2: ({ children }) => (
+                    <h2 className="text-2xl font-semibold mb-3 mt-6">
+                      {children}
+                    </h2>
+                  ),
+                  h3: ({ children }) => (
+                    <h3 className="text-xl font-semibold mb-2 mt-4">
+                      {children}
+                    </h3>
+                  ),
+                  ul: ({ children }) => (
+                    <ul className="list-disc pl-6 mb-4 space-y-1">
+                      {children}
+                    </ul>
+                  ),
+                  ol: ({ children }) => (
+                    <ol className="list-decimal pl-6 mb-4 space-y-1">
+                      {children}
+                    </ol>
+                  ),
+                  p: ({ children }) => (
+                    <p className="mb-3 leading-relaxed">{children}</p>
+                  ),
                   strong: ({ children }) => (
-                    <strong className="font-semibold text-gray-900 dark:text-gray-100">{children}</strong>
+                    <strong className="font-semibold text-gray-900 dark:text-gray-100">
+                      {children}
+                    </strong>
                   ),
                   blockquote: ({ children }) => (
                     <blockquote className="border-l-4 border-gray-300 pl-4 italic my-4 text-gray-600 dark:text-gray-400">
@@ -345,5 +428,5 @@ export function BusinessPlanViewer({ markdown, onRestart, contextSummary }: Busi
         </Card>
       )}
     </div>
-  )
+  );
 }

@@ -14,7 +14,12 @@ interface EmailData {
   };
 }
 
-async function sendEmail(to: string, subject: string, html: string, text: string) {
+async function sendEmail(
+  to: string,
+  subject: string,
+  html: string,
+  text: string
+) {
   if (!RESEND_API_KEY) {
     console.log("RESEND_API_KEY not set, would send email:", { to, subject });
     return { success: true, id: "mock-email-id" };
@@ -23,7 +28,7 @@ async function sendEmail(to: string, subject: string, html: string, text: string
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${RESEND_API_KEY}`,
+      Authorization: `Bearer ${RESEND_API_KEY}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -45,7 +50,7 @@ async function sendEmail(to: string, subject: string, html: string, text: string
 
 function generateBusinessPlanEmail(data: EmailData) {
   const { businessPlan, contextSummary, userInfo } = data;
-  
+
   const html = `
     <!DOCTYPE html>
     <html>
@@ -71,9 +76,19 @@ function generateBusinessPlanEmail(data: EmailData) {
       <div class="content">
         <div class="highlight">
           <h3>📋 Your Business Profile</h3>
-          <p><strong>Business Type:</strong> ${contextSummary?.businessType || userInfo?.businessType || "Not specified"}</p>
-          <p><strong>Key Challenges:</strong> ${contextSummary?.painPoints || userInfo?.painPoints || "Not specified"}</p>
-          <p><strong>Goals:</strong> ${contextSummary?.goals || userInfo?.goals || "Not specified"}</p>
+          <p><strong>Business Type:</strong> ${
+            contextSummary?.businessType ||
+            userInfo?.businessType ||
+            "Not specified"
+          }</p>
+          <p><strong>Key Challenges:</strong> ${
+            contextSummary?.painPoints ||
+            userInfo?.painPoints ||
+            "Not specified"
+          }</p>
+          <p><strong>Goals:</strong> ${
+            contextSummary?.goals || userInfo?.goals || "Not specified"
+          }</p>
         </div>
         
         <h2>📊 Your Complete AI Business Plan</h2>
@@ -97,8 +112,12 @@ function generateBusinessPlanEmail(data: EmailData) {
 Your AI Business Plan is Ready!
 
 Business Profile:
-- Business Type: ${contextSummary?.businessType || userInfo?.businessType || "Not specified"}
-- Key Challenges: ${contextSummary?.painPoints || userInfo?.painPoints || "Not specified"}
+- Business Type: ${
+    contextSummary?.businessType || userInfo?.businessType || "Not specified"
+  }
+- Key Challenges: ${
+    contextSummary?.painPoints || userInfo?.painPoints || "Not specified"
+  }
 - Goals: ${contextSummary?.goals || userInfo?.goals || "Not specified"}
 
 Your Complete AI Business Plan:
@@ -115,7 +134,7 @@ Questions? Reply to this email or contact us at support@yourdomain.com
 
 function generateLeadNotificationEmail(data: EmailData) {
   const { email, contextSummary, userInfo } = data;
-  
+
   const html = `
     <!DOCTYPE html>
     <html>
@@ -138,12 +157,26 @@ function generateLeadNotificationEmail(data: EmailData) {
       <div class="lead-info">
         <h2>Lead Information</h2>
         <p><strong>Email:</strong> ${email}</p>
-        <p><strong>Business Type:</strong> ${contextSummary?.businessType || userInfo?.businessType || "Not specified"}</p>
-        <p><strong>Pain Points:</strong> ${contextSummary?.painPoints || userInfo?.painPoints || "Not specified"}</p>
-        <p><strong>Goals:</strong> ${contextSummary?.goals || userInfo?.goals || "Not specified"}</p>
-        <p><strong>Data Available:</strong> ${contextSummary?.dataAvailable || "Not specified"}</p>
-        <p><strong>Prior Tech Use:</strong> ${contextSummary?.priorTechUse || "Not specified"}</p>
-        <p><strong>Growth Intent:</strong> ${contextSummary?.growthIntent || "Not specified"}</p>
+        <p><strong>Business Type:</strong> ${
+          contextSummary?.businessType ||
+          userInfo?.businessType ||
+          "Not specified"
+        }</p>
+        <p><strong>Pain Points:</strong> ${
+          contextSummary?.painPoints || userInfo?.painPoints || "Not specified"
+        }</p>
+        <p><strong>Goals:</strong> ${
+          contextSummary?.goals || userInfo?.goals || "Not specified"
+        }</p>
+        <p><strong>Data Available:</strong> ${
+          contextSummary?.dataAvailable || "Not specified"
+        }</p>
+        <p><strong>Prior Tech Use:</strong> ${
+          contextSummary?.priorTechUse || "Not specified"
+        }</p>
+        <p><strong>Growth Intent:</strong> ${
+          contextSummary?.growthIntent || "Not specified"
+        }</p>
         <p><strong>Timestamp:</strong> ${new Date().toLocaleString()}</p>
       </div>
       
@@ -159,8 +192,12 @@ New Lead Captured - AI Business Plan Generator
 
 Lead Information:
 - Email: ${email}
-- Business Type: ${contextSummary?.businessType || userInfo?.businessType || "Not specified"}
-- Pain Points: ${contextSummary?.painPoints || userInfo?.painPoints || "Not specified"}
+- Business Type: ${
+    contextSummary?.businessType || userInfo?.businessType || "Not specified"
+  }
+- Pain Points: ${
+    contextSummary?.painPoints || userInfo?.painPoints || "Not specified"
+  }
 - Goals: ${contextSummary?.goals || userInfo?.goals || "Not specified"}
 - Data Available: ${contextSummary?.dataAvailable || "Not specified"}
 - Prior Tech Use: ${contextSummary?.priorTechUse || "Not specified"}
@@ -224,7 +261,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error("Error sending business plan:", error);
-    
+
     return NextResponse.json(
       {
         error: "Failed to send business plan",
