@@ -1,66 +1,70 @@
-"use client"
+"use client";
 
-import type React from "react"
+import type React from "react";
 
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Card, CardContent } from "@/components/ui/card"
-import { Globe, ArrowRight, Loader2, X, AlertCircle, Info } from "lucide-react"
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent } from "@/components/ui/card";
+import { Globe, ArrowRight, Loader2, X, AlertCircle, Info } from "lucide-react";
 
 interface WebsiteInputProps {
-  onWebsiteProcessed: (data: any) => void
-  onError: (message: string) => void
+  onWebsiteProcessed: (data: any) => void;
+  onError: (message: string) => void;
 }
 
-export function WebsiteInput({ onWebsiteProcessed, onError }: WebsiteInputProps) {
-  const [url, setUrl] = useState("")
-  const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [isProcessed, setIsProcessed] = useState(false)
-  const [processedUrl, setProcessedUrl] = useState("")
-  const [error, setError] = useState<string | null>(null)
-  const [analysisStatus, setAnalysisStatus] = useState("")
-  const [screenshotUrl, setScreenshotUrl] = useState<string | null>(null)
+export function WebsiteInput({
+  onWebsiteProcessed,
+  onError,
+}: WebsiteInputProps) {
+  const [url, setUrl] = useState("");
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isProcessed, setIsProcessed] = useState(false);
+  const [processedUrl, setProcessedUrl] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [analysisStatus, setAnalysisStatus] = useState("");
+  const [screenshotUrl, setScreenshotUrl] = useState<string | null>(null);
 
   const isValidUrl = (urlString: string) => {
     try {
-      const url = new URL(urlString)
-      return url.protocol === "http:" || url.protocol === "https:"
+      const url = new URL(urlString);
+      return url.protocol === "http:" || url.protocol === "https:";
     } catch {
-      return false
+      return false;
     }
-  }
+  };
 
   const normalizeUrl = (urlString: string) => {
     // Add https:// if no protocol is specified
     if (!urlString.startsWith("http://") && !urlString.startsWith("https://")) {
-      return "https://" + urlString
+      return "https://" + urlString;
     }
-    return urlString
-  }
+    return urlString;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
 
     if (!url.trim()) {
-      const errorMsg = "Please enter a website URL"
-      setError(errorMsg)
-      onError(errorMsg)
-      return
+      const errorMsg = "Please enter a website URL";
+      setError(errorMsg);
+      onError(errorMsg);
+      return;
     }
 
-    const normalizedUrl = normalizeUrl(url.trim())
+    const normalizedUrl = normalizeUrl(url.trim());
 
     if (!isValidUrl(normalizedUrl)) {
-      const errorMsg = "Please enter a valid website URL (e.g., example.com or https://example.com)"
-      setError(errorMsg)
-      onError(errorMsg)
-      return
+      const errorMsg =
+        "Please enter a valid website URL (e.g., example.com or https://example.com)";
+      setError(errorMsg);
+      onError(errorMsg);
+      return;
     }
 
-    setError(null)
-    setIsAnalyzing(true)
-    setAnalysisStatus("Fetching website content...")
+    setError(null);
+    setIsAnalyzing(true);
+    setAnalysisStatus("Fetching website content...");
 
     try {
       const response = await fetch("/api/analyze/website", {
@@ -69,38 +73,45 @@ export function WebsiteInput({ onWebsiteProcessed, onError }: WebsiteInputProps)
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ url: normalizedUrl }),
-      })
+      });
 
-      const data = await response.json()
+      const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.details || data.error || `Website analysis failed: ${response.status}`)
+        throw new Error(
+          data.details ||
+            data.error ||
+            `Website analysis failed: ${response.status}`
+        );
       }
 
-      setAnalysisStatus("Analysis complete!")
-      onWebsiteProcessed(data)
-      setIsProcessed(true)
-      setProcessedUrl(normalizedUrl)
-      setScreenshotUrl(data.screenshotUrl || null)
+      setAnalysisStatus("Analysis complete!");
+      onWebsiteProcessed(data);
+      setIsProcessed(true);
+      setProcessedUrl(normalizedUrl);
+      setScreenshotUrl(data.screenshotUrl || null);
     } catch (error) {
-      console.error("Error analyzing website:", error)
-      const errorMsg = error instanceof Error ? error.message : "Failed to analyze website. Please try again."
-      setError(errorMsg)
-      onError(errorMsg)
-      setAnalysisStatus("")
+      console.error("Error analyzing website:", error);
+      const errorMsg =
+        error instanceof Error
+          ? error.message
+          : "Failed to analyze website. Please try again.";
+      setError(errorMsg);
+      onError(errorMsg);
+      setAnalysisStatus("");
     } finally {
-      setIsAnalyzing(false)
+      setIsAnalyzing(false);
     }
-  }
+  };
 
   const resetForm = () => {
-    setUrl("")
-    setIsProcessed(false)
-    setProcessedUrl("")
-    setError(null)
-    setAnalysisStatus("")
-    setScreenshotUrl(null)
-  }
+    setUrl("");
+    setIsProcessed(false);
+    setProcessedUrl("");
+    setError(null);
+    setAnalysisStatus("");
+    setScreenshotUrl(null);
+  };
 
   return (
     <div className="w-full space-y-3">
@@ -114,14 +125,22 @@ export function WebsiteInput({ onWebsiteProcessed, onError }: WebsiteInputProps)
                 placeholder="Enter your business website URL (e.g., example.com)"
                 value={url}
                 onChange={(e) => {
-                  setUrl(e.target.value)
-                  setError(null) // Clear error when user types
+                  setUrl(e.target.value);
+                  setError(null); // Clear error when user types
                 }}
                 disabled={isAnalyzing}
                 className="flex-1"
               />
-              <Button type="submit" size="sm" disabled={!url.trim() || isAnalyzing}>
-                {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+              <Button
+                type="submit"
+                size="sm"
+                disabled={!url.trim() || isAnalyzing}
+              >
+                {isAnalyzing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ArrowRight className="h-4 w-4" />
+                )}
               </Button>
             </div>
             {analysisStatus && (
@@ -139,7 +158,8 @@ export function WebsiteInput({ onWebsiteProcessed, onError }: WebsiteInputProps)
                 <p>{error}</p>
                 {error.includes("protected") && (
                   <p className="mt-1">
-                    Some websites block automated access. Try entering key information manually instead.
+                    Some websites block automated access. Try entering key
+                    information manually instead.
                   </p>
                 )}
               </div>
@@ -152,8 +172,12 @@ export function WebsiteInput({ onWebsiteProcessed, onError }: WebsiteInputProps)
               <p className="font-medium mb-1">Website Analysis Tips:</p>
               <ul className="space-y-0.5">
                 <li>• Enter your main business website URL</li>
-                <li>• Works best with public websites (not password-protected)</li>
-                <li>• We'll analyze your products, services, and target audience</li>
+                <li>
+                  • Works best with public websites (not password-protected)
+                </li>
+                <li>
+                  • We'll analyze your products, services, and target audience
+                </li>
               </ul>
             </div>
           </div>
@@ -165,26 +189,32 @@ export function WebsiteInput({ onWebsiteProcessed, onError }: WebsiteInputProps)
               <div className="flex items-center space-x-3">
                 <Globe className="h-5 w-5 text-primary" />
                 <div>
-                  <p className="text-sm font-medium truncate max-w-[200px]">{processedUrl}</p>
-                  <p className="text-xs text-green-500">Website analyzed successfully</p>
+                  <p className="text-sm font-medium truncate max-w-[200px]">
+                    {processedUrl}
+                  </p>
+                  <p className="text-xs text-green-500">
+                    Website analyzed successfully
+                  </p>
                 </div>
               </div>
               <Button variant="ghost" size="icon" onClick={resetForm}>
                 <X className="h-4 w-4" />
               </Button>
             </div>
-            
+
             {screenshotUrl && (
               <div className="space-y-2">
-                <p className="text-xs font-medium text-muted-foreground">Website Screenshot:</p>
+                <p className="text-xs font-medium text-muted-foreground">
+                  Website Screenshot:
+                </p>
                 <div className="border rounded-lg overflow-hidden">
-                  <img 
-                    src={screenshotUrl} 
+                  <img
+                    src={screenshotUrl}
                     alt={`Screenshot of ${processedUrl}`}
                     className="w-full h-auto max-h-64 object-cover"
                     onError={(e) => {
                       console.log("Screenshot failed to load, hiding image");
-                      e.currentTarget.style.display = 'none';
+                      e.currentTarget.style.display = "none";
                     }}
                   />
                 </div>
@@ -197,5 +227,5 @@ export function WebsiteInput({ onWebsiteProcessed, onError }: WebsiteInputProps)
         </Card>
       )}
     </div>
-  )
+  );
 }

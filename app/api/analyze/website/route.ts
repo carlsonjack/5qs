@@ -356,8 +356,8 @@ export async function POST(req: NextRequest) {
         marketingWeaknesses = "Pricing transparency could be improved";
       }
 
-      // Generate screenshot URL using a screenshot service
-      const screenshotUrl = `https://api.screenshotone.com/take?access_key=${process.env.SCREENSHOT_API_KEY || 'demo'}&url=${encodeURIComponent(url)}&viewport_width=1280&viewport_height=720&device_scale_factor=1&format=png&image_quality=80&block_ads=true&block_cookie_banners=true&block_banners_by_heuristics=true&block_trackers=true&delay=2&timeout=10`;
+      // Generate screenshot URL using a free screenshot service
+      const screenshotUrl = `https://api.screenshotmachine.com?key=demo&url=${encodeURIComponent(url)}&dimension=1280x720&format=png&cacheLimit=0&timeout=10000`;
 
       return NextResponse.json({
         productsServices: businessType,
@@ -408,8 +408,8 @@ export async function POST(req: NextRequest) {
         websiteContent
       );
 
-      // Generate screenshot URL using a screenshot service
-      const screenshotUrl = `https://api.screenshotone.com/take?access_key=${process.env.SCREENSHOT_API_KEY || 'demo'}&url=${encodeURIComponent(url)}&viewport_width=1280&viewport_height=720&device_scale_factor=1&format=png&image_quality=80&block_ads=true&block_cookie_banners=true&block_banners_by_heuristics=true&block_trackers=true&delay=2&timeout=10`;
+      // Generate screenshot URL using a free screenshot service
+      const screenshotUrl = `https://api.screenshotmachine.com?key=demo&url=${encodeURIComponent(url)}&dimension=1280x720&format=png&cacheLimit=0&timeout=10000`;
 
       analysisResult = {
         productsServices: hasProducts
