@@ -499,22 +499,19 @@ Based on our conversation, your business has significant opportunities for growt
                     data.cashFlowRisks ||
                     data.marketingWeaknesses ||
                     "Not yet specified",
-                  goals: 
+                  goals:
                     data.marketingStrengths ||
                     data.goals ||
                     "Not yet specified",
-                  dataAvailable: 
-                    data.revenueTrend || 
+                  dataAvailable:
+                    data.revenueTrend ||
                     data.dataAvailable ||
                     "Not yet specified",
-                  priorTechUse: 
-                    data.techStack || 
-                    data.priorTechUse ||
-                    "Not yet specified",
-                  growthIntent: 
-                    data.customerSegment ? `Targeting: ${data.customerSegment}` :
-                    data.growthIntent ||
-                    "Not yet specified",
+                  priorTechUse:
+                    data.techStack || data.priorTechUse || "Not yet specified",
+                  growthIntent: data.customerSegment
+                    ? `Targeting: ${data.customerSegment}`
+                    : data.growthIntent || "Not yet specified",
                 };
                 setContextSummary(initialContext as ContextSummary);
               }}
@@ -573,7 +570,7 @@ Based on our conversation, your business has significant opportunities for growt
       {/* Right Sidebar - Business Profile */}
       <div className="hidden xl:flex w-80 border-l bg-card p-6 flex-col">
         <BusinessProfile contextSummary={contextSummary} />
-        
+
         {/* Success Message - Only show when we have analysis data */}
         {contextSummary && (
           <div className="mt-6 border rounded-lg p-4 bg-green-50 dark:bg-green-900/20">
@@ -584,7 +581,8 @@ Based on our conversation, your business has significant opportunities for growt
               </span>
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              Your business insights will be used to personalize the AI conversation
+              Your business insights will be used to personalize the AI
+              conversation
             </p>
           </div>
         )}

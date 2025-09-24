@@ -9,21 +9,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { FileUpload } from "./file-upload";
 import { WebsiteInput } from "./website-input";
-import { BusinessProfile } from "./business-profile";
 import { useToast } from "@/hooks/use-toast";
 import {
   ArrowRight,
   Loader2,
   CheckCircle,
-  Building2,
-  Target,
-  AlertCircle,
-  Database,
-  Laptop,
-  TrendingUp,
 } from "lucide-react";
 
 interface ContextGatheringProps {
@@ -48,7 +40,7 @@ export function ContextGathering({
       title: "Financial data processed",
       description: "Your financial data has been analyzed successfully.",
     });
-    
+
     // Update sidebar immediately
     if (onDataUpdate) {
       const contextData = {
@@ -66,7 +58,7 @@ export function ContextGathering({
       title: "Website analyzed successfully! 🎉",
       description: "We've extracted key business insights from your website.",
     });
-    
+
     // Update sidebar immediately
     if (onDataUpdate) {
       const contextData = {
@@ -86,60 +78,6 @@ export function ContextGathering({
     });
   };
 
-  // Map analysis data to business profile format
-  const getBusinessProfileData = () => {
-    const profileData: any = {
-      businessType: "Not yet specified",
-      painPoints: "Not yet specified",
-      goals: "Not yet specified",
-      dataAvailable: "Not yet specified",
-      priorTechUse: "Not yet specified",
-      growthIntent: "Not yet specified",
-    };
-
-    // Map website analysis data
-    if (websiteData) {
-      if (websiteData.productsServices) {
-        profileData.businessType = websiteData.productsServices;
-      }
-      if (websiteData.marketingWeaknesses) {
-        profileData.painPoints = websiteData.marketingWeaknesses;
-      }
-      if (websiteData.marketingStrengths) {
-        profileData.goals = websiteData.marketingStrengths;
-      }
-      if (websiteData.techStack) {
-        profileData.priorTechUse = websiteData.techStack;
-      }
-      if (websiteData.customerSegment) {
-        profileData.growthIntent = `Targeting: ${websiteData.customerSegment}`;
-      }
-    }
-
-    // Map financial analysis data
-    if (financialData) {
-      if (
-        financialData.businessType &&
-        profileData.businessType === "Not yet specified"
-      ) {
-        profileData.businessType = financialData.businessType;
-      }
-      if (
-        financialData.cashFlowRisks &&
-        profileData.painPoints === "Not yet specified"
-      ) {
-        profileData.painPoints = financialData.cashFlowRisks;
-      }
-      if (financialData.revenueTrend) {
-        profileData.dataAvailable = financialData.revenueTrend;
-      }
-      if (financialData.largestCostCenters) {
-        profileData.goals = `Optimize: ${financialData.largestCostCenters}`;
-      }
-    }
-
-    return profileData;
-  };
 
   const handleSubmit = () => {
     setIsSubmitting(true);
@@ -164,7 +102,6 @@ export function ContextGathering({
     }
   };
 
-  const businessProfileData = getBusinessProfileData();
   const hasAnalysisData = financialData || websiteData;
 
   return (
@@ -201,28 +138,6 @@ export function ContextGathering({
               </div>
             </div>
 
-            {/* Analysis Status */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-medium">Analysis Status</h3>
-                {hasAnalysisData && (
-                  <Badge variant="secondary" className="text-xs">
-                    <CheckCircle className="w-3 h-3 mr-1" />
-                    Analysis Complete
-                  </Badge>
-                )}
-              </div>
-
-              {!hasAnalysisData && (
-                <div className="border rounded-lg p-8 text-center text-muted-foreground">
-                  <Building2 className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">
-                    Upload data or analyze your website to get personalized
-                    insights
-                  </p>
-                </div>
-              )}
-            </div>
           </div>
 
           <div className="flex justify-between pt-4">
