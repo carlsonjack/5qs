@@ -64,7 +64,7 @@ export function WebsiteInput({
 
     setError(null);
     setIsAnalyzing(true);
-    setAnalysisStatus("Fetching website content...");
+    setAnalysisStatus("Building business profile...");
 
     try {
       const response = await fetch("/api/analyze/website", {

@@ -10,11 +10,15 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Mail, Lock, Download, Send } from "lucide-react";
+import { Mail, Lock, Download, Send, User } from "lucide-react";
 import { toast } from "sonner";
 
 interface EmailGateProps {
-  onEmailSubmit: (email: string) => Promise<void>;
+  onEmailSubmit: (data: {
+    email: string;
+    firstName: string;
+    lastName: string;
+  }) => Promise<void>;
   isLoading?: boolean;
 }
 
@@ -23,6 +27,8 @@ export function EmailGate({
   isLoading = false,
 }: EmailGateProps) {
   const [email, setEmail] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -33,9 +39,23 @@ export function EmailGate({
       return;
     }
 
+    if (!firstName.trim()) {
+      toast.error("Please enter your first name");
+      return;
+    }
+
+    if (!lastName.trim()) {
+      toast.error("Please enter your last name");
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      await onEmailSubmit(email);
+      await onEmailSubmit({
+        email,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+      });
       toast.success("Business plan sent to your email!");
     } catch (error) {
       toast.error("Failed to send business plan. Please try again.");
@@ -54,12 +74,49 @@ export function EmailGate({
           Get Your Complete Business Plan
         </CardTitle>
         <CardDescription>
-          Enter your email to unlock the full AI implementation roadmap,
+          Enter your details to unlock the full AI implementation roadmap,
           download as PDF, and receive it directly in your inbox.
         </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label htmlFor="firstName" className="text-sm font-medium">
+                First Name
+              </label>
+              <div className="relative">
+                <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  id="firstName"
+                  type="text"
+                  placeholder="John"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  className="pl-10"
+                  required
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="lastName" className="text-sm font-medium">
+                Last Name
+              </label>
+              <div className="relative">
+                <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  id="lastName"
+                  type="text"
+                  placeholder="Doe"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  className="pl-10"
+                  required
+                />
+              </div>
+            </div>
+          </div>
+
           <div className="space-y-2">
             <label htmlFor="email" className="text-sm font-medium">
               Email Address
@@ -94,8 +151,8 @@ export function EmailGate({
           </Button>
 
           <div className="text-xs text-muted-foreground text-center">
-            We'll also send you a PDF version and forward your details to our AI
-            implementation partners.
+            We'll send you a personalized PDF version you can share with your
+            team.
           </div>
         </form>
       </CardContent>

@@ -1,18 +1,25 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Building2, Target, AlertCircle, Database, Laptop, TrendingUp } from "lucide-react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import {
+  Building2,
+  Target,
+  AlertCircle,
+  Database,
+  Laptop,
+  TrendingUp,
+} from "lucide-react";
 
 interface ContextSummary {
-  businessType: string
-  painPoints: string
-  goals: string
-  dataAvailable: string
-  priorTechUse: string
-  growthIntent: string
+  businessType: string;
+  painPoints: string;
+  goals: string;
+  dataAvailable: string;
+  priorTechUse: string;
+  growthIntent: string;
 }
 
 interface BusinessProfileProps {
-  contextSummary: ContextSummary | null
+  contextSummary: ContextSummary | null;
 }
 
 export function BusinessProfile({ contextSummary }: BusinessProfileProps) {
@@ -22,6 +29,18 @@ export function BusinessProfile({ contextSummary }: BusinessProfileProps) {
       label: "Business Type",
       icon: Building2,
       value: contextSummary?.businessType || "Not yet specified",
+    },
+    {
+      key: "priorTechUse",
+      label: "Tech Stack",
+      icon: Laptop,
+      value: contextSummary?.priorTechUse || "Not yet specified",
+    },
+    {
+      key: "growthIntent",
+      label: "Growth Intent",
+      icon: TrendingUp,
+      value: contextSummary?.growthIntent || "Not yet specified",
     },
     {
       key: "painPoints",
@@ -41,19 +60,7 @@ export function BusinessProfile({ contextSummary }: BusinessProfileProps) {
       icon: Database,
       value: contextSummary?.dataAvailable || "Not yet specified",
     },
-    {
-      key: "priorTechUse",
-      label: "Tech Use",
-      icon: Laptop,
-      value: contextSummary?.priorTechUse || "Not yet specified",
-    },
-    {
-      key: "growthIntent",
-      label: "Growth Intent",
-      icon: TrendingUp,
-      value: contextSummary?.growthIntent || "Not yet specified",
-    },
-  ]
+  ];
 
   return (
     <Card className="h-full">
@@ -65,8 +72,8 @@ export function BusinessProfile({ contextSummary }: BusinessProfileProps) {
       </CardHeader>
       <CardContent className="space-y-4">
         {fields.map((field) => {
-          const Icon = field.icon
-          const isSpecified = field.value !== "Not yet specified"
+          const Icon = field.icon;
+          const isSpecified = field.value !== "Not yet specified";
 
           return (
             <div key={field.key} className="space-y-2">
@@ -79,13 +86,22 @@ export function BusinessProfile({ contextSummary }: BusinessProfileProps) {
                   </Badge>
                 )}
               </div>
-              <p className={`text-sm pl-6 ${isSpecified ? "text-foreground" : "text-muted-foreground italic"}`}>
-                {field.value}
+              <p
+                className={`text-sm pl-6 ${
+                  isSpecified
+                    ? "text-foreground"
+                    : "text-muted-foreground italic"
+                }`}
+              >
+                {/* Truncate and clean long values */}
+                {field.value.length > 200
+                  ? `${field.value.substring(0, 200)}...`
+                  : field.value}
               </p>
             </div>
-          )
+          );
         })}
       </CardContent>
     </Card>
-  )
+  );
 }

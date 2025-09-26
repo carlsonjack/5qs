@@ -1,0 +1,69 @@
+export type Phase = "intake" | "plan" | "research";
+
+export interface DocStats {
+  pages: number;
+  sources: number;
+  conflicts: boolean;
+}
+
+export interface UserFlags {
+  costMode?: boolean;
+}
+
+const ENV = {
+  DEFAULT:
+    process.env.LLM_DEFAULT_MODEL || "nvidia/llama-3.1-nemotron-70b-instruct",
+  PLAN: process.env.LLM_PLAN_MODEL || "nvidia/llama-3.1-nemotron-ultra-253b-v1",
+  COST:
+    process.env.LLM_COST_MODE_MODEL || "nvidia/nemotron-4-340b-mini-instruct",
+  FAST: process.env.LLM_FAST_MODEL || "nvidia/nemotron-4-340b-mini-instruct",
+};
+
+export function chooseModel({
+  phase,
+  docStats,
+  userFlags,
+}: {
+  phase: Phase;
+  docStats: DocStats;
+  userFlags: UserFlags;
+}): string {
+  const defaultModel = ENV.DEFAULT;
+  const planModel = ENV.PLAN;
+  const costModel = ENV.COST;
+
+  if (phase === "intake") {
+    if (userFlags.costMode) return costModel;
+    // Use fast model for intake to improve response time
+    return ENV.FAST;
+  }
+
+  if (phase === "plan") {
+    // If plan length requirement is small, we can use default model
+    // We cannot know tokens here; caller may override. Default to plan model.
+    return planModel || defaultModel;
+  }
+
+  // research
+  const needsEscalation =
+    docStats.conflicts || docStats.pages > 40 || docStats.sources > 6;
+  if (needsEscalation) return planModel || defaultModel;
+  return defaultModel;
+}
+
+export function shouldTriggerResearch({
+  docStats,
+  userQuery,
+}: {
+  docStats: DocStats;
+  userQuery: string;
+}): boolean {
+  const explicit = /competitor|market review|benchmark|compare|research/i.test(
+    userQuery || ""
+  );
+  if (explicit) return true;
+  if (docStats.pages > 20) return true;
+  if (docStats.sources > 3) return true;
+  if (docStats.conflicts) return true;
+  return false;
+}

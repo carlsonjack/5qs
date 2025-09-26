@@ -1,44 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server";
-
-const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY;
-const NVIDIA_API_URL =
-  process.env.NVIDIA_API_URL ||
-  "https://integrate.api.nvidia.com/v1/chat/completions";
-
-async function callNvidiaAPI(messages: any[], systemPrompt: string) {
-  if (!NVIDIA_API_KEY) {
-    throw new Error("NVIDIA_API_KEY environment variable is not set");
-  }
-
-  const requestBody = {
-    model: "nvidia/llama-3.1-nemotron-ultra-253b-v1",
-    messages: [{ role: "system", content: systemPrompt }, ...messages],
-    temperature: 0.3,
-    top_p: 0.95,
-    max_tokens: 1024,
-    frequency_penalty: 0,
-    presence_penalty: 0,
-    stream: false,
-  };
-
-  const response = await fetch(NVIDIA_API_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${NVIDIA_API_KEY}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify(requestBody),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`NVIDIA API error: ${response.status} - ${errorText}`);
-  }
-
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content;
-}
+import { chatCompletion } from "@/lib/nim/client";
+import {
+  chunkText,
+  embedDocuments,
+  cacheDomain,
+  getCachedDomain,
+  getDocsByIds,
+} from "@/lib/rag/index";
+import { filterOutput } from "@/lib/safety";
 
 async function fetchWebsiteContent(url: string) {
   try {
@@ -213,8 +182,10 @@ async function fetchWebsiteDirectly(url: string): Promise<string> {
 }
 
 export async function POST(req: NextRequest) {
+  let url: string = "";
   try {
-    const { url } = await req.json();
+    const body = await req.json();
+    url = body.url;
 
     if (!url) {
       return NextResponse.json({ error: "URL is required" }, { status: 400 });
@@ -251,109 +222,164 @@ export async function POST(req: NextRequest) {
       websiteContent.length
     );
 
-    // Send to NVIDIA NIM for analysis
-    const systemPrompt =
-      "Analyze the following website content and extract key business data in JSON form with these exact keys: productsServices, customerSegment, techStack, marketingStrengths, marketingWeaknesses. What products/services are offered? What customer segment is targeted? What tech or integrations are visible? Any marketing strengths or weaknesses? Return only valid JSON.";
-
-    let analysisResponse;
+    // Ingest into RAG (chunk + embed) and cache by domain
+    // This is optional - website analysis will work even if RAG fails
     try {
-      analysisResponse = await callNvidiaAPI(
-        [
+      const domain = validatedUrl.hostname;
+      const existing = getCachedDomain(domain);
+      if (!existing) {
+        const chunks = chunkText(websiteContent, 1000, 150);
+        const docIds: string[] = [];
+        await embedDocuments(
+          chunks.map((c, idx) => ({
+            id: `${domain}#${idx}`,
+            text: c.text,
+            meta: { url: validatedUrl.toString(), chunk: idx },
+          }))
+        );
+        for (let i = 0; i < chunks.length; i++) docIds.push(`${domain}#${i}`);
+        cacheDomain(domain, docIds);
+        console.log(`✅ RAG ingestion successful for ${domain}`);
+      } else {
+        console.log(`✅ Using cached RAG data for ${domain}`);
+      }
+    } catch (ingestErr) {
+      console.warn(
+        "⚠️ RAG ingest failed (website) - continuing with analysis:",
+        ingestErr instanceof Error ? ingestErr.message : String(ingestErr)
+      );
+      // Don't throw - let the website analysis continue
+    }
+
+    // Send to NIM for deterministic JSON using guided_json
+    const systemPrompt =
+      "You are a business analyst. Analyze the following website content and extract key business data. Return only JSON.";
+
+    const guidedSchema = {
+      type: "object",
+      properties: {
+        productsServices: { type: "string" },
+        customerSegment: { type: "string" },
+        techStack: { type: "string" },
+        marketingStrengths: { type: "string" },
+        marketingWeaknesses: { type: "string" },
+      },
+      required: [
+        "productsServices",
+        "customerSegment",
+        "techStack",
+        "marketingStrengths",
+        "marketingWeaknesses",
+      ],
+      additionalProperties: false,
+    } as const;
+
+    let analysisResponse: string | null = null;
+    try {
+      console.log("Using NIM guided_json for website analysis...");
+      const res = await chatCompletion({
+        messages: [
+          { role: "system", content: systemPrompt },
           {
             role: "user",
             content: `Website content to analyze:\n\n${websiteContent}`,
           },
         ],
-        systemPrompt
-      );
-    } catch (nvidiaError) {
-      console.error("NVIDIA API call failed:", nvidiaError);
-      // Fall through to use fallback analysis
+        model:
+          process.env.LLM_DEFAULT_MODEL ||
+          "nvidia/llama-3.1-nemotron-70b-instruct",
+        temperature: 0.1,
+        top_p: 0.9,
+        max_tokens: 400,
+        nvext: { guided_json: guidedSchema as any },
+      });
+      analysisResponse = res.content;
+    } catch (nimError) {
+      console.error("NIM guided_json failed:", nimError);
       analysisResponse = null;
     }
 
     if (!analysisResponse) {
       console.log("NVIDIA API failed, using enhanced fallback analysis");
 
-      // Enhanced fallback analysis with more specific insights
+      // Generic fallback analysis that works for any business
       const content = websiteContent.toLowerCase();
 
-      // Extract business type from content patterns
-      let businessType = "Business Entity";
-      if (content.includes("auction") || content.includes("bid")) {
-        businessType = "Online Auction Platform";
+      // Generic business type detection
+      let businessType = "Business website";
+      if (content.includes("service") || content.includes("consulting")) {
+        businessType = "Service-based business";
       } else if (
-        content.includes("car") ||
-        content.includes("vehicle") ||
-        content.includes("automotive")
-      ) {
-        businessType = "Automotive Marketplace";
-      } else if (
-        content.includes("ecommerce") ||
+        content.includes("product") ||
         content.includes("shop") ||
-        content.includes("store")
+        content.includes("buy")
       ) {
-        businessType = "E-commerce Platform";
-      } else if (
-        content.includes("service") ||
-        content.includes("consulting")
-      ) {
-        businessType = "Service Provider";
+        businessType = "Product-based business";
       } else if (
         content.includes("software") ||
         content.includes("app") ||
-        content.includes("platform")
+        content.includes("technology")
       ) {
-        businessType = "Software/Technology Company";
+        businessType = "Technology business";
       }
 
-      // Extract customer segment
+      // Generic customer segment
       let customerSegment = "General audience";
-      if (content.includes("collector") || content.includes("enthusiast")) {
-        customerSegment = "Collectors and Enthusiasts";
-      } else if (
-        content.includes("dealer") ||
-        content.includes("professional")
-      ) {
-        customerSegment = "Professional Dealers";
-      } else if (
+      if (
         content.includes("business") ||
-        content.includes("enterprise")
+        content.includes("enterprise") ||
+        content.includes("company")
       ) {
-        customerSegment = "Business/Enterprise";
-      }
-
-      // Extract tech stack indicators
-      let techStack = "Standard web technologies";
-      if (content.includes("api") || content.includes("integration")) {
-        techStack = "API-driven platform with integrations";
-      } else if (content.includes("mobile") || content.includes("app")) {
-        techStack = "Mobile-responsive web platform";
-      } else if (content.includes("real-time") || content.includes("live")) {
-        techStack = "Real-time web application";
-      }
-
-      // Extract marketing strengths
-      let marketingStrengths = "Professional website presence";
-      if (content.includes("community") || content.includes("forum")) {
-        marketingStrengths =
-          "Strong community engagement and user-generated content";
+        customerSegment = "Business customers";
       } else if (
-        content.includes("testimonial") ||
-        content.includes("review")
+        content.includes("individual") ||
+        content.includes("personal") ||
+        content.includes("home")
       ) {
-        marketingStrengths = "Social proof through testimonials and reviews";
-      } else if (content.includes("blog") || content.includes("news")) {
-        marketingStrengths = "Content marketing and thought leadership";
+        customerSegment = "Individual consumers";
       }
 
-      // Extract potential weaknesses
-      let marketingWeaknesses = "Limited detailed analysis available";
+      // Generic tech stack
+      let techStack = "Standard web presence";
+      if (content.includes("app") || content.includes("mobile")) {
+        techStack = "Web and mobile platform";
+      } else if (content.includes("online") || content.includes("digital")) {
+        techStack = "Digital platform";
+      }
+
+      // Generic marketing strengths
+      let marketingStrengths = "Professional website presence";
+      if (
+        content.includes("award") ||
+        content.includes("certified") ||
+        content.includes("trusted")
+      ) {
+        marketingStrengths = "Credibility and trust indicators";
+      } else if (
+        content.includes("review") ||
+        content.includes("testimonial") ||
+        content.includes("rating")
+      ) {
+        marketingStrengths = "Customer feedback and social proof";
+      } else if (
+        content.includes("experience") ||
+        content.includes("expertise") ||
+        content.includes("specialist")
+      ) {
+        marketingStrengths = "Industry expertise and experience";
+      }
+
+      // Generic weaknesses
+      let marketingWeaknesses =
+        "Limited analysis available from website content";
       if (!content.includes("contact") && !content.includes("about")) {
-        marketingWeaknesses =
-          "Limited contact information and company transparency";
-      } else if (!content.includes("pricing") && !content.includes("cost")) {
-        marketingWeaknesses = "Pricing transparency could be improved";
+        marketingWeaknesses = "Limited contact and company information";
+      } else if (
+        !content.includes("pricing") &&
+        !content.includes("cost") &&
+        !content.includes("quote")
+      ) {
+        marketingWeaknesses = "Pricing information not readily available";
       }
 
       // Generate screenshot URL using a free service that doesn't require API key
@@ -376,15 +402,7 @@ export async function POST(req: NextRequest) {
     let analysisResult;
 
     try {
-      // Try to extract JSON from the response
-      const jsonMatch = analysisResponse.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        analysisResult = JSON.parse(jsonMatch[0]);
-      } else {
-        throw new Error("No JSON found in NVIDIA response");
-      }
-
-      // Ensure all required fields are present
+      analysisResult = JSON.parse(analysisResponse);
       const requiredFields = [
         "productsServices",
         "customerSegment",
@@ -397,6 +415,12 @@ export async function POST(req: NextRequest) {
           analysisResult[field] = "Unable to determine from website content";
         }
       }
+
+      // Add screenshot URL to the main analysis result
+      const screenshotUrl = `https://mini.s-shot.ru/1280x720/PNG/1280/Z100/?${encodeURIComponent(
+        url
+      )}`;
+      analysisResult.screenshotUrl = screenshotUrl;
     } catch (parseError) {
       console.error("Error parsing NVIDIA response:", parseError);
       console.log("Raw NVIDIA response:", analysisResponse);
@@ -425,6 +449,7 @@ export async function POST(req: NextRequest) {
         techStack: hasTech
           ? "Technology-focused business"
           : "Standard web presence",
+        // Do not treat these as user-declared pain points or goals
         marketingStrengths: "Professional website presence",
         marketingWeaknesses: "Limited detailed analysis available",
         contentSample: websiteContent.substring(0, 200) + "...", // Include sample for debugging
@@ -434,12 +459,24 @@ export async function POST(req: NextRequest) {
 
     console.log("Website analysis result:", analysisResult);
 
-    return NextResponse.json(analysisResult);
+    const safe = { ...analysisResult };
+    // Light output filtering
+    for (const k of Object.keys(safe)) {
+      if (typeof (safe as any)[k] === "string") {
+        (safe as any)[k] = filterOutput((safe as any)[k]).text;
+      }
+    }
+    return NextResponse.json(safe);
   } catch (error) {
     console.error("Error analyzing website:", error);
 
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error occurred";
+
+    // Generate screenshot URL even for error cases
+    const screenshotUrl = `https://mini.s-shot.ru/1280x720/PNG/1280/Z100/?${encodeURIComponent(
+      url
+    )}`;
 
     return NextResponse.json(
       {
@@ -451,6 +488,7 @@ export async function POST(req: NextRequest) {
         techStack: "Standard web technologies",
         marketingStrengths: "Professional web presence",
         marketingWeaknesses: "Analysis could not be completed",
+        screenshotUrl: screenshotUrl,
         fallback: true,
       },
       { status: 200 } // Return 200 instead of 500 to prevent frontend errors

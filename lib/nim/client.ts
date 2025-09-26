@@ -1,0 +1,495 @@
+/*
+  NVIDIA NIM client with typed helpers, retry/backoff, and guided_json support.
+*/
+
+// Simple metrics logger
+function logMetrics(
+  phase: string,
+  model: string,
+  latencyMs: number,
+  tokensIn?: number,
+  tokensOut?: number,
+  success = true
+) {
+  console.log(
+    `[METRICS] ${phase}: model=${model}, latency=${latencyMs}ms, tokens_in=${
+      tokensIn || 0
+    }, tokens_out=${tokensOut || 0}, success=${success}`
+  );
+}
+
+type ChatMessage = {
+  role: "system" | "user" | "assistant" | "context";
+  content: string;
+};
+
+export interface ChatCompletionParams {
+  messages: ChatMessage[];
+  model: string;
+  temperature?: number;
+  top_p?: number;
+  max_tokens?: number;
+  stream?: boolean;
+  nvext?: {
+    guided_json?: Record<string, unknown>;
+  };
+}
+
+export interface ChatCompletionResult {
+  content: string;
+  model: string;
+  requestId?: string;
+  status?: number;
+  headers?: Record<string, string>;
+  tokensIn?: number;
+  tokensOut?: number;
+  latencyMs?: number;
+}
+
+export interface EmbeddingsParams {
+  input: string | string[];
+  model: string;
+}
+
+export interface EmbeddingsResult {
+  embeddings: number[][];
+  model: string;
+  requestId?: string;
+}
+
+export interface RerankParams {
+  query: string;
+  documents: Array<{ id: string; text: string }>;
+  model: string;
+  top_n?: number;
+}
+
+export interface RerankResult {
+  ranked: Array<{ id: string; text: string; score: number }>;
+  model: string;
+  requestId?: string;
+}
+
+export interface TTSParams {
+  text: string;
+  model?: string;
+  voice?: string;
+  speed?: number;
+  pitch?: number;
+}
+
+export interface TTSResult {
+  audio: ArrayBuffer;
+  model: string;
+  requestId?: string;
+}
+
+const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY;
+const CHAT_URL =
+  process.env.NVIDIA_API_URL ||
+  "https://integrate.api.nvidia.com/v1/chat/completions";
+const EMBED_URL =
+  process.env.NVIDIA_EMBEDDINGS_URL ||
+  "https://integrate.api.nvidia.com/v1/embeddings";
+const RERANK_URL =
+  process.env.NVIDIA_RERANK_URL || "https://integrate.api.nvidia.com/v1/rerank";
+const TTS_URL =
+  process.env.NVIDIA_TTS_URL || "https://integrate.api.nvidia.com/v1/audio/speech";
+
+if (!NVIDIA_API_KEY) {
+  // In serverless environments we still allow initialization; calls will fail fast.
+  console.warn(
+    "NVIDIA_API_KEY is not set. NIM client calls will fail until configured."
+  );
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function jitter(baseMs: number) {
+  const jitterMs = Math.floor(Math.random() * 100);
+  return baseMs + jitterMs;
+}
+
+function redact(value: unknown): unknown {
+  if (typeof value === "string") {
+    return value.replace(/(sk-[a-zA-Z0-9_\-]+)/g, "[redacted]");
+  }
+  return value;
+}
+
+async function doFetch(
+  url: string,
+  init: RequestInit,
+  maxRetries = 2
+): Promise<{ res: Response; requestId?: string; startedAt: number }> {
+  let attempt = 0;
+  let lastError: any = null;
+  const startedAt = Date.now();
+
+  while (attempt <= maxRetries) {
+    try {
+      // Add timeout to prevent extremely long waits
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+      const res = await fetch(url, { ...init, signal: controller.signal });
+      clearTimeout(timeoutId);
+
+      const requestId = res.headers.get("x-request-id") || undefined;
+      if (
+        res.status === 429 ||
+        res.status === 502 ||
+        res.status === 503 ||
+        res.status === 504
+      ) {
+        const backoff = jitter(300 * Math.pow(2, attempt));
+        await sleep(backoff);
+        attempt += 1;
+        continue;
+      }
+      return { res, requestId, startedAt };
+    } catch (err) {
+      lastError = err;
+
+      // Handle timeout specifically
+      if (err.name === "AbortError") {
+        console.error(
+          `Request timeout after 30 seconds (attempt ${attempt + 1})`
+        );
+        throw new Error("Request timeout - please try again");
+      }
+
+      const backoff = jitter(300 * Math.pow(2, attempt));
+      await sleep(backoff);
+      attempt += 1;
+    }
+  }
+  throw lastError || new Error("NIM request failed");
+}
+
+export async function chatCompletion(
+  params: ChatCompletionParams
+): Promise<ChatCompletionResult> {
+  const body: any = {
+    model: params.model,
+    messages: params.messages,
+    temperature: params.temperature ?? 0.4,
+    top_p: params.top_p ?? 0.95,
+    max_tokens: params.max_tokens ?? 1024,
+    stream: params.stream ?? false,
+  };
+  if (params.nvext?.guided_json) {
+    body.nvext = { guided_json: params.nvext.guided_json };
+  }
+
+  const init: RequestInit = {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${NVIDIA_API_KEY}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify(body),
+  };
+
+  const { res, requestId, startedAt } = await doFetch(CHAT_URL, init);
+  const latencyMs = Date.now() - startedAt;
+  const text = await res.text();
+  let data: any = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    // Non-JSON response
+  }
+
+  if (!res.ok) {
+    // Handle specific error cases
+    if (res.status === 502 || res.status === 503 || res.status === 504) {
+      const err = new Error(
+        `NIM service temporarily unavailable (${res.status})`
+      );
+      (err as any).status = res.status;
+      (err as any).body = text;
+      (err as any).requestId = requestId;
+      (err as any).retryable = true;
+      throw err;
+    }
+
+    const err = new Error(`NIM chat error ${res.status}`);
+    (err as any).status = res.status;
+    (err as any).body = text;
+    (err as any).requestId = requestId;
+    throw err;
+  }
+
+  const choice = data?.choices?.[0];
+  const message = choice?.message || {};
+
+  const extractText = (value: any): string => {
+    if (value == null) return "";
+    if (typeof value === "string") return value;
+    if (Array.isArray(value)) {
+      return value
+        .map((item) => extractText(item))
+        .filter(Boolean)
+        .join(" ");
+    }
+    if (typeof value === "object") {
+      if (typeof value.type === "string") {
+        if (typeof value.text === "string") return value.text;
+        if (Array.isArray(value.text))
+          return value.text.map((t: any) => extractText(t)).join(" ");
+      }
+      if (typeof value.text === "string") return value.text;
+      if (Array.isArray(value.text))
+        return value.text.map((t: any) => extractText(t)).join(" ");
+      if (typeof value.content === "string") return value.content;
+      if (Array.isArray(value.content))
+        return value.content.map((entry: any) => extractText(entry)).join(" ");
+      if (typeof value.value === "string") return value.value;
+      if (typeof value.output_text === "string") return value.output_text;
+      if (Array.isArray(value.output_text))
+        return value.output_text.map((t: any) => extractText(t)).join(" ");
+    }
+    return "";
+  };
+
+  const candidates: string[] = [];
+
+  const pushCandidate = (value: any) => {
+    const textCandidate = extractText(value).trim();
+    if (textCandidate) candidates.push(textCandidate);
+  };
+
+  console.log("NIM response debug:", {
+    hasData: !!data,
+    hasChoices: !!data?.choices,
+    choicesLength: data?.choices?.length,
+    hasChoice: !!choice,
+    hasMessage: !!message,
+    messageKeys: message ? Object.keys(message) : [],
+    messageContent: message?.content,
+    messageContentType: typeof message?.content,
+    choiceText: choice?.text,
+    choiceKeys: choice ? Object.keys(choice) : [],
+  });
+
+  if (message) {
+    pushCandidate(message.content);
+    pushCandidate((message as any).reasoning_content);
+    pushCandidate((message as any).notes);
+  }
+
+  pushCandidate(choice?.text);
+  pushCandidate(choice?.content);
+  pushCandidate(choice?.reasoning_content);
+
+  if (!candidates.length) {
+    pushCandidate(data?.content);
+    pushCandidate(data?.output_text);
+    const toolOutputs = choice?.message?.tool_calls;
+    if (Array.isArray(toolOutputs)) {
+      toolOutputs.forEach((call: any) => {
+        pushCandidate(call?.output);
+        pushCandidate(call?.text);
+      });
+    }
+  }
+
+  let content = candidates[0] || "";
+
+  if (!content && data) {
+    const dataStr = JSON.stringify(data);
+    console.log(
+      "No content found, trying to extract from full response:",
+      dataStr.substring(0, 500)
+    );
+  }
+
+  const tokensIn = data?.usage?.prompt_tokens ?? undefined;
+  const tokensOut = data?.usage?.completion_tokens ?? undefined;
+
+  // Basic observability log (redacted)
+  console.log(
+    "NIM chat",
+    JSON.stringify(
+      {
+        model: params.model,
+        requestId,
+        status: res.status,
+        tokensIn,
+        tokensOut,
+        latencyMs,
+      },
+      (_k, v) => redact(v) as any
+    )
+  );
+
+  // Metrics logging
+  logMetrics("chat", params.model, latencyMs, tokensIn, tokensOut, true);
+
+  return {
+    content,
+    model: params.model,
+    requestId,
+    status: res.status,
+    headers: Object.fromEntries(res.headers.entries()),
+    tokensIn,
+    tokensOut,
+    latencyMs,
+  };
+}
+
+export async function embeddings(
+  params: EmbeddingsParams
+): Promise<EmbeddingsResult> {
+  const body: any = {
+    model: params.model,
+    input: params.input,
+    input_type: "passage", // Use "passage" for indexing, "query" for searching
+  };
+
+  const init: RequestInit = {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${NVIDIA_API_KEY}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify(body),
+  };
+
+  const { res, requestId, startedAt } = await doFetch(EMBED_URL, init);
+  const latencyMs = Date.now() - startedAt;
+  const text = await res.text();
+  let data: any = null;
+
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch (parseError) {
+    logMetrics(
+      "embeddings",
+      params.model,
+      latencyMs,
+      undefined,
+      undefined,
+      false
+    );
+    const err = new Error(`NIM embeddings JSON parse error: ${parseError}`);
+    (err as any).status = res.status;
+    (err as any).body = text;
+    (err as any).requestId = requestId;
+    throw err;
+  }
+
+  if (!res.ok) {
+    logMetrics(
+      "embeddings",
+      params.model,
+      latencyMs,
+      undefined,
+      undefined,
+      false
+    );
+    console.error("Embeddings API error details:", {
+      status: res.status,
+      body: data,
+      url: EMBED_URL,
+      model: params.model,
+      inputType: Array.isArray(params.input) ? "array" : "string",
+      inputLength: Array.isArray(params.input)
+        ? params.input.length
+        : params.input.length,
+    });
+    const err = new Error(`NIM embeddings error ${res.status}`);
+    (err as any).status = res.status;
+    (err as any).body = data;
+    (err as any).requestId = requestId;
+    throw err;
+  }
+
+  const vectors = (data?.data || []).map((d: any) => d.embedding as number[]);
+  logMetrics("embeddings", params.model, latencyMs, undefined, undefined, true);
+  return { embeddings: vectors, model: params.model, requestId };
+}
+
+export async function rerank(params: RerankParams): Promise<RerankResult> {
+  // NVIDIA NIM doesn't have a separate rerank endpoint
+  // For now, return documents in original order with mock scores
+  console.warn("⚠️ NVIDIA NIM rerank not available - using mock reranking");
+
+  const ranked = params.documents.map((doc, index) => ({
+    id: doc.id,
+    text: doc.text,
+    score: 1.0 - index * 0.1, // Mock decreasing scores
+  }));
+
+  logMetrics("rerank", params.model, 0, undefined, undefined, true);
+  return {
+    ranked: ranked.slice(0, params.top_n ?? 6),
+    model: params.model,
+    requestId: "mock-rerank",
+  };
+}
+
+export async function textToSpeech(params: TTSParams): Promise<TTSResult> {
+  if (!NVIDIA_API_KEY) {
+    throw new Error("NVIDIA_API_KEY is required for TTS");
+  }
+
+  const model = params.model || "nvidia/magpie-tts-flow";
+  const voice = params.voice || "alloy";
+  const body: Record<string, unknown> = {
+    model,
+    input: params.text,
+    format: "wav",
+  };
+
+  if (voice) body.voice = voice;
+  if (typeof params.speed === "number") body.speed = params.speed;
+  if (typeof params.pitch === "number") body.pitch = params.pitch;
+
+  const startedAt = Date.now();
+  const requestId = `tts_${Date.now()}_${Math.random()
+    .toString(36)
+    .substr(2, 9)}`;
+
+  try {
+    const res = await fetch(TTS_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${NVIDIA_API_KEY}`,
+        "Content-Type": "application/json",
+        Accept: "application/octet-stream",
+      },
+      body: JSON.stringify(body),
+    });
+
+    const latencyMs = Date.now() - startedAt;
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      logMetrics("tts", model, latencyMs, undefined, undefined, false);
+      const err = new Error(`NIM TTS error ${res.status}: ${errorText}`);
+      (err as any).status = res.status;
+      (err as any).body = errorText;
+      (err as any).requestId = requestId;
+      throw err;
+    }
+
+    const audioBuffer = await res.arrayBuffer();
+    logMetrics("tts", model, latencyMs, undefined, undefined, true);
+
+    return {
+      audio: audioBuffer,
+      model,
+      requestId,
+    };
+  } catch (error) {
+    const latencyMs = Date.now() - startedAt;
+    logMetrics("tts", model, latencyMs, undefined, undefined, false);
+    throw error;
+  }
+}

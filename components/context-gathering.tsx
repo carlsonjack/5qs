@@ -81,6 +81,9 @@ export function ContextGathering({
     const contextData = {
       ...(financialData || {}),
       ...(websiteData || {}),
+      // Preserve raw analyses for downstream plan generation
+      financialAnalysis: financialData || null,
+      websiteAnalysis: websiteData || null,
     };
 
     // If we have at least one source of data, proceed
@@ -103,7 +106,7 @@ export function ContextGathering({
     <div className="max-w-6xl mx-auto p-4 space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Add Business Context (Optional)</CardTitle>
+          <CardTitle>Add Business Context</CardTitle>
           <CardDescription>
             Provide additional context about your business to get more
             personalized insights.
@@ -113,20 +116,27 @@ export function ContextGathering({
           <div className="max-w-2xl mx-auto space-y-6">
             <div className="space-y-2">
               <h3 className="text-sm font-medium">
-                Upload Financial Statement
+                Analyze Your Business Website
               </h3>
-              <FileUpload
-                onFileProcessed={handleFileProcessed}
+              <WebsiteInput
+                onWebsiteProcessed={handleWebsiteProcessed}
                 onError={handleError}
               />
             </div>
 
             <div className="space-y-2">
-              <h3 className="text-sm font-medium">
-                Analyze Your Business Website
-              </h3>
-              <WebsiteInput
-                onWebsiteProcessed={handleWebsiteProcessed}
+              <h3 className="text-sm font-medium">Upload Relevant Documents</h3>
+              <p className="text-sm text-muted-foreground">
+                Financial statements, business plans, marketing materials, or
+                any documents that help us understand your business better.
+                <span className="font-medium text-green-600">
+                  {" "}
+                  Your files are processed locally and never stored on our
+                  servers.
+                </span>
+              </p>
+              <FileUpload
+                onFileProcessed={handleFileProcessed}
                 onError={handleError}
               />
             </div>

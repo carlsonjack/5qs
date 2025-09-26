@@ -2,9 +2,18 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Moon, Sun, RotateCcw, Loader2, CheckCircle } from "lucide-react";
+import {
+  Moon,
+  Sun,
+  RotateCcw,
+  Loader2,
+  CheckCircle,
+  Sparkles,
+  MessageCircle,
+} from "lucide-react";
 import { useTheme } from "next-themes";
 import { useToast } from "@/hooks/use-toast";
+import { useChatPersistence } from "@/hooks/use-chat-persistence";
 import { Stepper } from "./stepper";
 import { ChatBubble } from "./chat-bubble";
 import { ChatInput } from "./chat-input";
@@ -13,11 +22,212 @@ import { ContextGathering } from "./context-gathering";
 import { BusinessPlanViewer } from "./business-plan-viewer";
 import Image from "next/image";
 
+// Motivational messages that rotate randomly for each session
+const MOTIVATIONAL_MESSAGES = [
+  "You've got this.",
+  "Smarter than the consultants.",
+  "Complexity? Crushed.",
+  "Strategy made simple.",
+  "The answers are in you already.",
+  "No MBA required.",
+  "Business genius, unlocked.",
+  "Strategy in plain English.",
+  "Smarts > Jargon.",
+  "Your gut is right.",
+  "This won't hurt a bit.",
+  "Less noise, more clarity.",
+  "You think clearer than you know.",
+  "Faster than a boardroom.",
+  "You're sharper than you give yourself credit for.",
+  "Big brains, no buzzwords.",
+  "Simplicity wins.",
+  "You already know more than you think.",
+  "Insight is your superpower.",
+  "Straight talk, smart answers.",
+  "This is easier than it looks.",
+  "You don't need the fluff.",
+  "Five minutes to clarity.",
+  "Brainstorm > Brain drain.",
+  "You're better at this than they are.",
+  "We cut the nonsense.",
+  "Business sense, distilled.",
+  "Sharp takes only.",
+  "Smart, simple, done.",
+  "You know the answers.",
+  "We just make them obvious.",
+  "Cut through the fog.",
+  "It's not rocket science.",
+  "Outsmart the overthinkers.",
+  "Trust your instincts.",
+  "You're a strategist now.",
+  "No BS, just clarity.",
+  "Strategy without the suit.",
+  "You're the smartest person in the room.",
+  "Turns out, you knew it all along.",
+];
+
+// Industry fun facts for different business types
+const INDUSTRY_FUN_FACTS: Record<string, string[]> = {
+  // E-commerce & Retail
+  "e-commerce": [
+    "The first online purchase was a Sting CD for $12.48 in 1994.",
+    "Amazon started as a bookstore in Jeff Bezos' garage.",
+    "Shopping carts were invented in 1937 and initially rejected by customers.",
+  ],
+  retail: [
+    "The barcode was first used on a pack of Wrigley's gum in 1974.",
+    "Black Friday got its name from when retailers finally turned a profit.",
+    "The shopping mall was invented by an Austrian architect in 1956.",
+  ],
+  online: [
+    "The first banner ad had a 44% click-through rate in 1994.",
+    "Email is older than the World Wide Web by 20 years.",
+    "The @ symbol was used in emails before it became an internet icon.",
+  ],
+
+  // Automotive
+  car: [
+    "The first car accident happened in 1891 at 4 mph.",
+    "Henry Ford never invented the assembly line—he perfected it.",
+    "The average car has over 30,000 parts.",
+  ],
+  automotive: [
+    "The car radio was invented 45 years after the car itself.",
+    "The new car smell is actually a combination of 50+ chemicals.",
+    "Ferrari makes more money from merchandise than selling cars.",
+  ],
+  auction: [
+    "The first recorded auction was for wives in ancient Babylon.",
+    "Sotheby's has been operating since 1744—longer than America has existed.",
+    "Christie's once sold a $450 million painting in 19 minutes.",
+  ],
+
+  // Food & Beverage
+  restaurant: [
+    "The first restaurant opened in Paris in 1765.",
+    "McDonald's golden arches are more recognizable than the Christian cross.",
+    "The word 'restaurant' means 'to restore' in French.",
+  ],
+  food: [
+    "Honey never spoils—archaeologists found edible honey in Egyptian tombs.",
+    "The fork was considered scandalous when first introduced in Europe.",
+    "Coca-Cola was originally green and sold as medicine.",
+  ],
+  coffee: [
+    "Coffee was discovered by goats in Ethiopia around 850 AD.",
+    "Espresso means 'pressed out' in Italian, not 'fast.'",
+    "Finland consumes more coffee per capita than any other country.",
+  ],
+
+  // Technology
+  software: [
+    "The first computer bug was an actual bug found in a Harvard computer in 1947.",
+    "The term 'debugging' comes from removing moths from machines.",
+    "Microsoft's original name was 'Micro-Soft' with a hyphen.",
+  ],
+  app: [
+    "The App Store launched with just 500 apps in 2008.",
+    "Angry Birds was rejected 51 times before finding a publisher.",
+    "The most expensive app ever sold for $999.99 and did nothing.",
+  ],
+  tech: [
+    "The first computer was the size of a room and weighed 27 tons.",
+    "Nokia once made toilet paper before becoming a tech giant.",
+    "The internet weighs about 2 ounces (the weight of all electrons).",
+  ],
+
+  // Professional Services
+  consulting: [
+    "Management consulting started in 1886 with Arthur D. Little.",
+    "McKinsey & Company was founded by an accountant from Chicago.",
+    "The Big Three consulting firms employ more MBAs than Fortune 500 companies.",
+  ],
+  marketing: [
+    "The first TV commercial aired in 1941 and cost $9.",
+    "Print advertising is over 500 years old—older than newspapers.",
+    "The average person sees 5,000 ads per day.",
+  ],
+  agency: [
+    "The first advertising agency opened in Philadelphia in 1850.",
+    "Mad Men was based on real 1960s Madison Avenue agencies.",
+    "Subliminal advertising was banned after causing mass hysteria.",
+  ],
+
+  // Healthcare
+  medical: [
+    "The stethoscope was invented because a doctor was too shy to put his ear on a woman's chest.",
+    "Aspirin was originally derived from willow tree bark.",
+    "The first successful heart transplant patient lived 18 days.",
+  ],
+  dental: [
+    "Toothbrushes with bristles were invented in China in 1498.",
+    "Ancient Egyptians used crushed eggshells as toothpaste.",
+    "Dentistry is one of the oldest medical professions—dating to 7000 BC.",
+  ],
+
+  // Finance
+  financial: [
+    "The first stock exchange opened in Amsterdam in 1602.",
+    "Paper money was invented in China over 1,000 years ago.",
+    "The New York Stock Exchange started under a buttonwood tree.",
+  ],
+  insurance: [
+    "Lloyd's of London started in a coffee house in 1688.",
+    "The first life insurance policy was bought on a ship's captain.",
+    "Benjamin Franklin founded the first fire insurance company in America.",
+  ],
+
+  // Education
+  education: [
+    "The University of Bologna (1088) is the world's oldest university.",
+    "Harvard was founded before calculus was invented.",
+    "The pencil eraser wasn't invented until 1858.",
+  ],
+  training: [
+    "Corporate training started during WWII to replace enlisted workers.",
+    "The 70-20-10 learning model was created by researchers at Princeton.",
+    "Virtual reality training reduces learning time by 40%.",
+  ],
+
+  // Default/General
+  default: [
+    "The oldest company still operating started in 578 AD in Japan.",
+    "The word 'entrepreneur' comes from French meaning 'to undertake.'",
+    "Small businesses employ 47% of all American workers.",
+    "The average entrepreneur fails 3.8 times before succeeding.",
+    "Business cards originated in 17th century Europe as calling cards.",
+  ],
+};
+
+// Function to get a fun fact based on business context
+function getIndustryFunFact(contextSummary: ContextSummary | null): string {
+  if (
+    !contextSummary?.businessType ||
+    contextSummary.businessType === "Not yet specified"
+  ) {
+    const defaultFacts = INDUSTRY_FUN_FACTS.default;
+    return defaultFacts[Math.floor(Math.random() * defaultFacts.length)];
+  }
+
+  const businessType = contextSummary.businessType.toLowerCase();
+
+  // Find matching industry category
+  for (const [industry, facts] of Object.entries(INDUSTRY_FUN_FACTS)) {
+    if (industry !== "default" && businessType.includes(industry)) {
+      return facts[Math.floor(Math.random() * facts.length)];
+    }
+  }
+
+  // Fallback to default facts
+  const defaultFacts = INDUSTRY_FUN_FACTS.default;
+  return defaultFacts[Math.floor(Math.random() * defaultFacts.length)];
+}
+
 interface Message {
   id: string;
   content: string;
   isUser: boolean;
-  timestamp: string;
+  timestamp?: string;
 }
 
 interface ContextSummary {
@@ -31,6 +241,8 @@ interface ContextSummary {
 }
 
 export function ChatInterface() {
+  const { isHydrated, saveState, getState, clearState } = useChatPersistence();
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentStep, setCurrentStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
@@ -45,17 +257,107 @@ export function ChatInterface() {
     string | null
   >(null);
   const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
+  const [readyToGeneratePlan, setReadyToGeneratePlan] = useState(false);
+  const [canGeneratePlan, setCanGeneratePlan] = useState(false);
+  const [websiteAnalysis, setWebsiteAnalysis] = useState<any>(null);
+  const [financialAnalysis, setFinancialAnalysis] = useState<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { theme, setTheme } = useTheme();
   const { toast } = useToast();
+
+  // Select a random motivational message for each session
+  const [motivationalMessage, setMotivationalMessage] = useState(
+    () =>
+      MOTIVATIONAL_MESSAGES[
+        Math.floor(Math.random() * MOTIVATIONAL_MESSAGES.length)
+      ]
+  );
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
+  // Load state from localStorage on mount
+  useEffect(() => {
+    if (isHydrated) {
+      const savedState = getState();
+      if (savedState.messages.length > 0) {
+        setMessages(
+          savedState.messages.map((msg, index) => ({
+            id: `msg-${index}`,
+            content: msg.content,
+            isUser: msg.isUser,
+            timestamp: msg.timestamp,
+          }))
+        );
+        setCurrentStep(savedState.currentStep);
+        setIsStarted(savedState.isStarted);
+        setContextSummary(savedState.contextSummary);
+        setIsContextGatheringComplete(savedState.isContextGatheringComplete);
+        setBusinessPlanMarkdown(savedState.businessPlanMarkdown);
+        setReadyToGeneratePlan(savedState.readyToGeneratePlan);
+        setCanGeneratePlan(savedState.canGeneratePlan ?? false);
+        setWebsiteAnalysis(savedState.websiteAnalysis);
+        setFinancialAnalysis(savedState.financialAnalysis);
+      }
+    }
+  }, [isHydrated, getState]);
+
+  // Save state whenever it changes
+  useEffect(() => {
+    if (isHydrated) {
+      saveState({
+        messages: messages.map((msg) => ({
+          content: msg.content,
+          isUser: msg.isUser,
+          timestamp: msg.timestamp,
+        })),
+        currentStep,
+        isStarted,
+        contextSummary,
+        isContextGatheringComplete,
+        businessPlanMarkdown,
+        isGeneratingPlan,
+        readyToGeneratePlan,
+        canGeneratePlan,
+        websiteAnalysis,
+        financialAnalysis,
+      });
+    }
+  }, [
+    messages,
+    currentStep,
+    isStarted,
+    contextSummary,
+    isContextGatheringComplete,
+    businessPlanMarkdown,
+    isGeneratingPlan,
+    readyToGeneratePlan,
+    canGeneratePlan,
+    websiteAnalysis,
+    financialAnalysis,
+    isHydrated,
+    saveState,
+  ]);
+
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    if (!isStarted || businessPlanMarkdown || canGeneratePlan) {
+      return;
+    }
+
+    const userCount = messages.filter((msg) => msg.isUser).length;
+    const assistantCount = messages.filter((msg) => !msg.isUser).length;
+
+    if (userCount >= 5 && assistantCount >= 6) {
+      setCurrentStep(6);
+      setReadyToGeneratePlan(true);
+      setCanGeneratePlan(true);
+    }
+  }, [messages, isStarted, businessPlanMarkdown, canGeneratePlan]);
 
   const addMessage = (content: string, isUser: boolean) => {
     const newMessage: Message = {
@@ -80,18 +382,6 @@ export function ChatInterface() {
         contextData.businessType ||
         contextData.productsServices ||
         "Not yet specified",
-      painPoints:
-        contextData.cashFlowRisks ||
-        contextData.marketingWeaknesses ||
-        "Not yet specified",
-      goals:
-        contextData.marketingStrengths ||
-        contextData.goals ||
-        "Not yet specified",
-      dataAvailable:
-        contextData.revenueTrend ||
-        contextData.dataAvailable ||
-        "Not yet specified",
       priorTechUse:
         contextData.techStack ||
         contextData.priorTechUse ||
@@ -99,6 +389,13 @@ export function ChatInterface() {
       growthIntent: contextData.customerSegment
         ? `Targeting: ${contextData.customerSegment}`
         : contextData.growthIntent || "Not yet specified",
+      // Do not infer pain points or goals from heuristic analyses; let the user state them
+      painPoints: contextData.painPoints || "Not yet specified",
+      goals: contextData.goals || "Not yet specified",
+      dataAvailable:
+        contextData.revenueTrend ||
+        contextData.dataAvailable ||
+        "Not yet specified",
     };
 
     // Add any additional fields from the analysis
@@ -109,6 +406,11 @@ export function ChatInterface() {
     });
 
     setContextSummary(initialContext as ContextSummary);
+    // Capture raw analyses if present for downstream plan generation
+    if (contextData?.websiteAnalysis)
+      setWebsiteAnalysis(contextData.websiteAnalysis);
+    if (contextData?.financialAnalysis)
+      setFinancialAnalysis(contextData.financialAnalysis);
     setIsContextGatheringComplete(true);
     startConversation(initialContext as ContextSummary);
   };
@@ -121,6 +423,7 @@ export function ChatInterface() {
   const startConversation = async (initialContext: ContextSummary | null) => {
     setIsStarted(true);
     setIsLoading(true);
+    setCanGeneratePlan(false);
 
     try {
       let initialMessage =
@@ -160,6 +463,8 @@ export function ChatInterface() {
           ],
           currentStep: 1,
           initialContext: initialContext,
+          websiteAnalysis,
+          financialAnalysis,
         }),
       });
 
@@ -203,17 +508,90 @@ export function ChatInterface() {
     }
   };
 
+  const handleGeneratePlan = async () => {
+    setIsGeneratingPlan(true);
+    setReadyToGeneratePlan(false);
+
+    try {
+      const chatMessages = messages.map((msg) => ({
+        role: msg.isUser ? "user" : "assistant",
+        content: msg.content,
+      }));
+
+      // Add a confirmation message to trigger business plan generation
+      chatMessages.push({
+        role: "user",
+        content:
+          "Yes, please generate my customized AI implementation plan now.",
+      });
+
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: chatMessages,
+          currentStep: 7, // Step past summary to trigger plan generation
+          initialContext: contextSummary,
+          websiteAnalysis,
+          financialAnalysis,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.businessPlanMarkdown) {
+        setBusinessPlanMarkdown(data.businessPlanMarkdown);
+        setCanGeneratePlan(false);
+        toast({
+          title: "Business Plan Generated! 🎉",
+          description:
+            "Your personalized business plan is ready to view, copy, and download.",
+        });
+      } else {
+        // Fallback: If no plan returned, try to extract from message
+        if (data.message && data.message.includes("AI Action Plan")) {
+          setBusinessPlanMarkdown(data.message);
+          setCanGeneratePlan(false);
+          toast({
+            title: "Business Plan Generated! 🎉",
+            description:
+              "Your personalized business plan is ready to view, copy, and download.",
+          });
+        } else {
+          throw new Error("No business plan received from API");
+        }
+      }
+    } catch (error) {
+      console.error("Error generating plan:", error);
+      toast({
+        title: "Plan Generation Failed",
+        description: "Failed to generate business plan. Please try again.",
+        variant: "destructive",
+      });
+      setReadyToGeneratePlan(true);
+      setCanGeneratePlan(true);
+    } finally {
+      setIsGeneratingPlan(false);
+    }
+  };
+
   const handleSendMessage = async (content: string) => {
     addMessage(content, true);
     setIsLoading(true);
 
     // ✅ Check if this is the 5th user message (end of step 5)
     const userMessages = messages.filter((msg) => msg.isUser);
-    const isFinalStep = currentStep === 5 && userMessages.length === 4; // This will be the 5th user message
+    const isFinalQuestion = currentStep === 5 && userMessages.length === 4; // This will be the 5th user message
 
-    if (isFinalStep) {
-      console.log("✅ Triggering business plan generation from frontend");
-      setIsGeneratingPlan(true);
+    if (isFinalQuestion) {
+      console.log(
+        "✅ This is the 5th user message - will move to summary step"
+      );
+      // Don't trigger plan generation here, let the response handler do it
     }
 
     try {
@@ -230,6 +608,9 @@ export function ChatInterface() {
         body: JSON.stringify({
           messages: chatMessages,
           currentStep: currentStep,
+          initialContext: contextSummary,
+          websiteAnalysis,
+          financialAnalysis,
         }),
       });
 
@@ -250,13 +631,15 @@ export function ChatInterface() {
         if (data.businessPlanMarkdown) {
           console.log("✅ Business plan received from backend");
           setBusinessPlanMarkdown(data.businessPlanMarkdown);
+          setReadyToGeneratePlan(false);
+          setCanGeneratePlan(false);
           toast({
             title: "Business Plan Generated! 🎉",
             description:
               "Your personalized business plan is ready to view, copy, and download.",
           });
-        } else if (currentStep < 5) {
-          // ✅ Only increment step if we're not at step 5 yet
+        } else if (currentStep < 6) {
+          // ✅ Only increment step if we're not at step 6 yet
           setCurrentStep((prev) => prev + 1);
         }
 
@@ -284,7 +667,7 @@ export function ChatInterface() {
       );
 
       // ✅ If business plan generation failed, provide a fallback
-      if (isFinalStep) {
+      if (isFinalQuestion) {
         console.log("❌ Business plan generation failed, using fallback");
         setBusinessPlanMarkdown(`# 🚀 Your Business Plan
 
@@ -337,10 +720,31 @@ Based on our conversation, your business has significant opportunities for growt
     setIsContextGatheringComplete(false);
     setBusinessPlanMarkdown(null);
     setIsGeneratingPlan(false);
+    setReadyToGeneratePlan(false);
+    setCanGeneratePlan(false);
+    // Select a new random motivational message for the fresh session
+    setMotivationalMessage(
+      MOTIVATIONAL_MESSAGES[
+        Math.floor(Math.random() * MOTIVATIONAL_MESSAGES.length)
+      ]
+    );
+    clearState(); // Clear localStorage
   };
 
   // ✅ Determine if we should show the chat input
   const showChatInput = isStarted && !businessPlanMarkdown && !isGeneratingPlan;
+
+  // Prevent hydration mismatches
+  if (!isHydrated) {
+    return (
+      <div className="flex h-screen bg-background items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading your conversation...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-background">
@@ -362,7 +766,7 @@ Based on our conversation, your business has significant opportunities for growt
           </div>
         </div>
 
-        <Stepper currentStep={isStarted ? currentStep : 0} totalSteps={5} />
+        <Stepper currentStep={isStarted ? currentStep : 0} totalSteps={6} />
 
         <div className="mt-auto space-y-2">
           <Button
@@ -412,7 +816,7 @@ Based on our conversation, your business has significant opportunities for growt
                 {businessPlanMarkdown
                   ? "We turned 5 questions into a full-blown AI plan. You're welcome."
                   : isStarted
-                  ? `Step ${currentStep} of 5 • Powered by NVIDIA NIM`
+                  ? `Step ${currentStep} of 6 • ${motivationalMessage}`
                   : "We turn 5 questions into a full-blown AI plan. You're welcome."}
               </p>
             </div>
@@ -495,23 +899,20 @@ Based on our conversation, your business has significant opportunities for growt
                     data.businessType ||
                     data.productsServices ||
                     "Not yet specified",
-                  painPoints:
-                    data.cashFlowRisks ||
-                    data.marketingWeaknesses ||
-                    "Not yet specified",
-                  goals:
-                    data.marketingStrengths ||
-                    data.goals ||
-                    "Not yet specified",
+                  marketingStrengths:
+                    data.marketingStrengths || "Not yet specified",
+                  techStack: data.techStack || "Not yet specified",
+                  customerSegment: data.customerSegment || "Not yet specified",
+                  growthIntent: data.customerSegment
+                    ? `Targeting: ${data.customerSegment}`
+                    : data.growthIntent || "Not yet specified",
+                  // Avoid seeding pain points/goals from heuristic fields
+                  painPoints: data.painPoints || "Not yet specified",
+                  goals: data.goals || "Not yet specified",
                   dataAvailable:
                     data.revenueTrend ||
                     data.dataAvailable ||
                     "Not yet specified",
-                  priorTechUse:
-                    data.techStack || data.priorTechUse || "Not yet specified",
-                  growthIntent: data.customerSegment
-                    ? `Targeting: ${data.customerSegment}`
-                    : data.growthIntent || "Not yet specified",
                 };
                 setContextSummary(initialContext as ContextSummary);
               }}
@@ -521,7 +922,21 @@ Based on our conversation, your business has significant opportunities for growt
             <BusinessPlanViewer
               markdown={businessPlanMarkdown}
               onRestart={resetChat}
+              onContinueChat={() => {
+                setBusinessPlanMarkdown(null);
+                setCanGeneratePlan(true);
+                setReadyToGeneratePlan(true);
+                toast({
+                  title: "Returned to Chat 💬",
+                  description:
+                    "You can now discuss your business plan or ask questions about implementation.",
+                });
+              }}
               contextSummary={contextSummary}
+              chatMessages={messages.map((msg) => ({
+                role: msg.isUser ? "user" : "assistant",
+                content: msg.content,
+              }))}
             />
           ) : (
             <div className="p-4">
@@ -537,14 +952,19 @@ Based on our conversation, your business has significant opportunities for growt
               {isGeneratingPlan && (
                 <div className="flex flex-col items-center justify-center py-8 space-y-4">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                  <div className="text-center">
+                  <div className="text-center space-y-3">
                     <p className="text-lg font-medium">
                       Generating your personalized business plan...
                     </p>
-                    <p className="text-sm text-muted-foreground mt-1">
+                    <p className="text-sm text-muted-foreground">
                       Analyzing your responses and creating actionable
                       recommendations
                     </p>
+                    <div className="mt-4 p-3 bg-muted/50 rounded-lg border-l-4 border-primary/30">
+                      <p className="text-sm text-green-600 italic">
+                        {getIndustryFunFact(contextSummary)}
+                      </p>
+                    </div>
                   </div>
                 </div>
               )}
@@ -552,6 +972,95 @@ Based on our conversation, your business has significant opportunities for growt
             </div>
           )}
         </div>
+
+        {/* ✅ Plan Generation CTA - appears once summary step is complete */}
+        {readyToGeneratePlan && (
+          <div className="border-t bg-card p-6">
+            <div className="max-w-4xl mx-auto space-y-6">
+              <div className="text-center">
+                <h3 className="text-lg font-semibold mb-2">
+                  What would you like to do next?
+                </h3>
+                <p className="text-muted-foreground">
+                  We have everything we need to build your personalized AI
+                  action plan. You can generate it now or keep sharing details
+                  to enrich the context.
+                </p>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <Button
+                  onClick={handleGeneratePlan}
+                  disabled={isGeneratingPlan}
+                  size="lg"
+                  className="bg-primary hover:bg-primary/90"
+                >
+                  {isGeneratingPlan ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                      Generating Your Plan...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      Generate AI Action Plan
+                    </>
+                  )}
+                </Button>
+
+                <Button
+                  onClick={() => {
+                    setReadyToGeneratePlan(false);
+                  }}
+                  variant="outline"
+                  size="lg"
+                >
+                  <MessageCircle className="w-4 h-4 mr-2" />
+                  Continue Chatting
+                </Button>
+              </div>
+
+              <p className="text-xs text-center text-muted-foreground">
+                Anything you share now will be woven into your business context
+                before we craft the plan.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* ✅ Lightweight CTA when plan can be generated but banner dismissed */}
+        {!readyToGeneratePlan &&
+          canGeneratePlan &&
+          !businessPlanMarkdown &&
+          !isGeneratingPlan &&
+          currentStep < 6 && ( // Only show if we haven't reached summary yet
+            <div className="border-t bg-card/70 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <p className="text-sm text-muted-foreground">
+                Ready when you are—generate the AI action plan anytime.
+              </p>
+              <Button
+                onClick={() => {
+                  if (isGeneratingPlan) return;
+                  handleGeneratePlan();
+                }}
+                disabled={isGeneratingPlan}
+                size="sm"
+                className="sm:w-auto"
+              >
+                {isGeneratingPlan ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Working...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    Generate AI Action Plan
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
 
         {/* ✅ Chat Input - only show when appropriate */}
         {showChatInput && (
@@ -561,7 +1070,9 @@ Based on our conversation, your business has significant opportunities for growt
             placeholder={
               currentStep < 5
                 ? "Share your thoughts..."
-                : "Answer this final question to generate your business plan..."
+                : currentStep === 5
+                ? "Answer this final question..."
+                : "Add any additional thoughts..."
             }
           />
         )}

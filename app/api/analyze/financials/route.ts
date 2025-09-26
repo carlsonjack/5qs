@@ -1,44 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
-
-const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY;
-const NVIDIA_API_URL =
-  process.env.NVIDIA_API_URL ||
-  "https://integrate.api.nvidia.com/v1/chat/completions";
-
-async function callNvidiaAPI(messages: any[], systemPrompt: string) {
-  if (!NVIDIA_API_KEY) {
-    throw new Error("NVIDIA_API_KEY environment variable is not set");
-  }
-
-  const requestBody = {
-    model: "nvidia/llama-3.1-nemotron-ultra-253b-v1",
-    messages: [{ role: "system", content: systemPrompt }, ...messages],
-    temperature: 0.3,
-    top_p: 0.95,
-    max_tokens: 1024,
-    frequency_penalty: 0,
-    presence_penalty: 0,
-    stream: false,
-  };
-
-  const response = await fetch(NVIDIA_API_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${NVIDIA_API_KEY}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify(requestBody),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`NVIDIA API error: ${response.status} - ${errorText}`);
-  }
-
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content;
-}
+import { chatCompletion } from "@/lib/nim/client";
+import { maybeOCR } from "@/lib/rag/index";
+import { filterOutput } from "@/lib/safety";
 
 async function extractTextFromPDF(arrayBuffer: ArrayBuffer): Promise<string> {
   try {
@@ -116,6 +79,11 @@ async function extractTextFromFile(file: File): Promise<string> {
   try {
     if (fileType === "application/pdf" || fileName.endsWith(".pdf")) {
       console.log("Processing PDF file...");
+      // Try OCR first if enabled
+      const ocr = await maybeOCR(file);
+      if (ocr && ocr.trim().length > 50) {
+        return ocr;
+      }
       const arrayBuffer = await file.arrayBuffer();
       return await extractTextFromPDF(arrayBuffer);
     } else if (fileType === "text/csv" || fileName.endsWith(".csv")) {
@@ -132,6 +100,18 @@ async function extractTextFromFile(file: File): Promise<string> {
         throw new Error("TXT file appears to be empty");
       }
       return text;
+    } else if (
+      /^image\/(png|jpe?g|webp)$/i.test(fileType) ||
+      fileName.match(/\.(png|jpe?g|jpg|webp)$/i)
+    ) {
+      console.log("Processing image file via OCR...");
+      const ocr = await maybeOCR(file);
+      if (ocr && ocr.trim().length > 20) {
+        return ocr;
+      }
+      throw new Error(
+        "OCR did not extract text from the image. Try a PDF or TXT."
+      );
     } else {
       throw new Error(
         `Unsupported file type: ${fileType}. Please upload PDF, CSV, or TXT files.`
@@ -200,21 +180,49 @@ export async function POST(req: NextRequest) {
     // Limit text length to avoid token limits (keep first 4000 characters)
     const limitedText = extractedText.substring(0, 4000);
 
-    // Send to NVIDIA NIM for analysis
+    // Send to NIM for analysis with guided_json
     const systemPrompt =
-      "Given the following financial statement text, extract key business insights in JSON form: revenue trend, largest cost centers, profit margins, seasonality, cash flow risks. Return only valid JSON with these exact keys: businessType, revenueTrend, largestCostCenters, profitMargins, seasonality, cashFlowRisks.";
+      "Given the following financial statement text, extract key business insights. Return only JSON.";
 
-    let analysisResponse;
+    let analysisResponse: string | null = null;
     try {
-      analysisResponse = await callNvidiaAPI(
-        [
+      const guidedSchema = {
+        type: "object",
+        properties: {
+          businessType: { type: "string" },
+          revenueTrend: { type: "string" },
+          largestCostCenters: { type: "string" },
+          profitMargins: { type: "string" },
+          seasonality: { type: "string" },
+          cashFlowRisks: { type: "string" },
+        },
+        required: [
+          "businessType",
+          "revenueTrend",
+          "largestCostCenters",
+          "profitMargins",
+          "seasonality",
+          "cashFlowRisks",
+        ],
+        additionalProperties: false,
+      } as const;
+      const res = await chatCompletion({
+        messages: [
+          { role: "system", content: systemPrompt },
           {
             role: "user",
             content: `Financial data to analyze:\n\n${limitedText}`,
           },
         ],
-        systemPrompt
-      );
+        model:
+          process.env.LLM_DEFAULT_MODEL ||
+          "nvidia/llama-3.1-nemotron-70b-instruct",
+        temperature: 0.1,
+        top_p: 0.9,
+        max_tokens: 500,
+        nvext: { guided_json: guidedSchema as any },
+      });
+      analysisResponse = res.content;
     } catch (nvidiaError) {
       console.error("NVIDIA API call failed:", nvidiaError);
       analysisResponse = null;
@@ -251,15 +259,7 @@ export async function POST(req: NextRequest) {
     let analysisResult;
 
     try {
-      // Try to extract JSON from the response
-      const jsonMatch = analysisResponse.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        analysisResult = JSON.parse(jsonMatch[0]);
-      } else {
-        throw new Error("No JSON found in NVIDIA response");
-      }
-
-      // Ensure all required fields are present
+      analysisResult = JSON.parse(analysisResponse);
       const requiredFields = [
         "businessType",
         "revenueTrend",
@@ -305,7 +305,13 @@ export async function POST(req: NextRequest) {
 
     console.log("Financial analysis result:", analysisResult);
 
-    return NextResponse.json(analysisResult);
+    const safe = { ...analysisResult };
+    for (const k of Object.keys(safe)) {
+      if (typeof (safe as any)[k] === "string") {
+        (safe as any)[k] = filterOutput((safe as any)[k]).text;
+      }
+    }
+    return NextResponse.json(safe);
   } catch (error) {
     console.error("Error processing financial data:", error);
 

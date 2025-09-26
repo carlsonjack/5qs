@@ -1,0 +1,12 @@
+- query: "What are your business hours?"
+  golden: "Mon–Fri 9am–5pm"
+  sources:
+    - url: "https://example-smb.com/contact"
+- query: "Do you offer emergency repairs?"
+  golden: "24/7 on-call"
+  sources:
+    - url: "https://example-smb.com/services"
+- query: "Where are you located?"
+  golden: "123 Main St, Denver"
+  sources:
+    - url: "https://example-smb.com/about"

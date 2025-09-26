@@ -3,22 +3,35 @@
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Copy, Download, FileText, Check, Loader2, Lock } from "lucide-react";
+import {
+  Copy,
+  Download,
+  FileText,
+  Check,
+  Loader2,
+  Lock,
+  MessageCircle,
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import Image from "next/image";
 import { EmailGate } from "@/components/email-gate";
 
 interface BusinessPlanViewerProps {
   markdown: string;
   onRestart: () => void;
+  onContinueChat?: () => void;
   contextSummary?: any;
+  chatMessages?: Array<{ role: string; content: string }>;
 }
 
 export function BusinessPlanViewer({
   markdown,
   onRestart,
+  onContinueChat,
   contextSummary,
+  chatMessages,
 }: BusinessPlanViewerProps) {
   const [copied, setCopied] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
@@ -36,7 +49,11 @@ export function BusinessPlanViewer({
     return fullMarkdown.substring(0, 1000) + "...";
   };
 
-  const handleEmailSubmit = async (email: string) => {
+  const handleEmailSubmit = async (data: {
+    email: string;
+    firstName: string;
+    lastName: string;
+  }) => {
     setIsSubmittingEmail(true);
     try {
       const response = await fetch("/api/send-plan", {
@@ -45,9 +62,12 @@ export function BusinessPlanViewer({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          email,
+          email: data.email,
+          firstName: data.firstName,
+          lastName: data.lastName,
           businessPlan: markdown,
           contextSummary,
+          chatMessages,
         }),
       });
 
@@ -144,6 +164,10 @@ export function BusinessPlanViewer({
         code { background-color: #f5f5f5; padding: 2px 4px; border-radius: 3px; }
         blockquote { border-left: 4px solid #ccc; margin: 10px 0; padding-left: 15px; font-style: italic; }
         hr { border: none; border-top: 1px solid #ccc; margin: 20px 0; }
+        table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 11px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f5f5f5; font-weight: bold; }
+        tr:nth-child(even) { background-color: #f9f9f9; }
         .prose { max-width: none !important; }
       `;
 
@@ -198,7 +222,7 @@ export function BusinessPlanViewer({
       pdf.save(filename);
 
       toast({
-        title: "PDF Generated! 📄",
+        title: "PDF Generated!",
         description: "Your business plan PDF has been downloaded successfully",
       });
     } catch (error) {
@@ -255,36 +279,47 @@ export function BusinessPlanViewer({
               </p>
             </CardHeader>
             <CardContent className="pt-6 pb-8 px-6">
-              <div className="prose dark:prose-invert max-w-none">
+              <div className="prose dark:prose-invert max-w-none space-y-6">
                 <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
                   components={{
                     h1: ({ children }) => (
-                      <h1 className="text-3xl font-bold mb-4 pb-2 border-b-2 border-gray-300">
+                      <h1 className="text-3xl font-bold mb-6 pb-3 border-b-2 border-primary/20 mt-8 first:mt-0">
                         {children}
                       </h1>
                     ),
                     h2: ({ children }) => (
-                      <h2 className="text-2xl font-semibold mb-3 mt-6">
+                      <h2 className="text-2xl font-semibold mb-4 mt-8 text-primary">
                         {children}
                       </h2>
                     ),
                     h3: ({ children }) => (
-                      <h3 className="text-xl font-semibold mb-2 mt-4">
+                      <h3 className="text-xl font-semibold mb-3 mt-6 text-gray-800 dark:text-gray-200">
                         {children}
                       </h3>
                     ),
+                    h4: ({ children }) => (
+                      <h4 className="text-lg font-semibold mb-2 mt-4 text-gray-700 dark:text-gray-300">
+                        {children}
+                      </h4>
+                    ),
                     ul: ({ children }) => (
-                      <ul className="list-disc pl-6 mb-4 space-y-1">
+                      <ul className="list-disc pl-6 mb-6 space-y-2">
                         {children}
                       </ul>
                     ),
                     ol: ({ children }) => (
-                      <ol className="list-decimal pl-6 mb-4 space-y-1">
+                      <ol className="list-decimal pl-6 mb-6 space-y-2">
                         {children}
                       </ol>
                     ),
+                    li: ({ children }) => (
+                      <li className="leading-relaxed">{children}</li>
+                    ),
                     p: ({ children }) => (
-                      <p className="mb-3 leading-relaxed">{children}</p>
+                      <p className="mb-4 leading-relaxed text-gray-700 dark:text-gray-300">
+                        {children}
+                      </p>
                     ),
                     strong: ({ children }) => (
                       <strong className="font-semibold text-gray-900 dark:text-gray-100">
@@ -292,9 +327,44 @@ export function BusinessPlanViewer({
                       </strong>
                     ),
                     blockquote: ({ children }) => (
-                      <blockquote className="border-l-4 border-gray-300 pl-4 italic my-4 text-gray-600 dark:text-gray-400">
+                      <blockquote className="border-l-4 border-primary/30 pl-4 italic my-6 text-gray-600 dark:text-gray-400 bg-muted/30 py-2">
                         {children}
                       </blockquote>
+                    ),
+                    hr: () => (
+                      <hr className="my-8 border-gray-200 dark:border-gray-700" />
+                    ),
+                    table: ({ children }) => (
+                      <div className="my-6 overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg">
+                          {children}
+                        </table>
+                      </div>
+                    ),
+                    thead: ({ children }) => (
+                      <thead className="bg-gray-50 dark:bg-gray-800">
+                        {children}
+                      </thead>
+                    ),
+                    tbody: ({ children }) => (
+                      <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
+                        {children}
+                      </tbody>
+                    ),
+                    tr: ({ children }) => (
+                      <tr className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                        {children}
+                      </tr>
+                    ),
+                    th: ({ children }) => (
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        {children}
+                      </th>
+                    ),
+                    td: ({ children }) => (
+                      <td className="px-6 py-4 text-sm text-gray-700 dark:text-gray-300">
+                        <div className="max-w-xs break-words">{children}</div>
+                      </td>
                     ),
                   }}
                 >
@@ -373,41 +443,64 @@ export function BusinessPlanViewer({
                 <Download className="h-4 w-4 mr-2" />
                 Download MD
               </Button>
+
+              {onContinueChat && (
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={onContinueChat}
+                  className="bg-primary hover:bg-primary/90"
+                >
+                  <MessageCircle className="h-4 w-4 mr-2" />
+                  Continue Discussing
+                </Button>
+              )}
             </div>
 
             <div
               ref={contentRef}
-              className="prose dark:prose-invert max-w-none"
+              className="prose dark:prose-invert max-w-none space-y-6"
             >
               <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
                 components={{
                   h1: ({ children }) => (
-                    <h1 className="text-3xl font-bold mb-4 pb-2 border-b-2 border-gray-300">
+                    <h1 className="text-3xl font-bold mb-6 pb-3 border-b-2 border-primary/20 mt-8 first:mt-0">
                       {children}
                     </h1>
                   ),
                   h2: ({ children }) => (
-                    <h2 className="text-2xl font-semibold mb-3 mt-6">
+                    <h2 className="text-2xl font-semibold mb-4 mt-8 text-primary">
                       {children}
                     </h2>
                   ),
                   h3: ({ children }) => (
-                    <h3 className="text-xl font-semibold mb-2 mt-4">
+                    <h3 className="text-xl font-semibold mb-3 mt-6 text-gray-800 dark:text-gray-200">
                       {children}
                     </h3>
                   ),
+                  h4: ({ children }) => (
+                    <h4 className="text-lg font-semibold mb-2 mt-4 text-gray-700 dark:text-gray-300">
+                      {children}
+                    </h4>
+                  ),
                   ul: ({ children }) => (
-                    <ul className="list-disc pl-6 mb-4 space-y-1">
+                    <ul className="list-disc pl-6 mb-6 space-y-2">
                       {children}
                     </ul>
                   ),
                   ol: ({ children }) => (
-                    <ol className="list-decimal pl-6 mb-4 space-y-1">
+                    <ol className="list-decimal pl-6 mb-6 space-y-2">
                       {children}
                     </ol>
                   ),
+                  li: ({ children }) => (
+                    <li className="leading-relaxed">{children}</li>
+                  ),
                   p: ({ children }) => (
-                    <p className="mb-3 leading-relaxed">{children}</p>
+                    <p className="mb-4 leading-relaxed text-gray-700 dark:text-gray-300">
+                      {children}
+                    </p>
                   ),
                   strong: ({ children }) => (
                     <strong className="font-semibold text-gray-900 dark:text-gray-100">
@@ -415,9 +508,44 @@ export function BusinessPlanViewer({
                     </strong>
                   ),
                   blockquote: ({ children }) => (
-                    <blockquote className="border-l-4 border-gray-300 pl-4 italic my-4 text-gray-600 dark:text-gray-400">
+                    <blockquote className="border-l-4 border-primary/30 pl-4 italic my-6 text-gray-600 dark:text-gray-400 bg-muted/30 py-2">
                       {children}
                     </blockquote>
+                  ),
+                  hr: () => (
+                    <hr className="my-8 border-gray-200 dark:border-gray-700" />
+                  ),
+                  table: ({ children }) => (
+                    <div className="my-6 overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg">
+                        {children}
+                      </table>
+                    </div>
+                  ),
+                  thead: ({ children }) => (
+                    <thead className="bg-gray-50 dark:bg-gray-800">
+                      {children}
+                    </thead>
+                  ),
+                  tbody: ({ children }) => (
+                    <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
+                      {children}
+                    </tbody>
+                  ),
+                  tr: ({ children }) => (
+                    <tr className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                      {children}
+                    </tr>
+                  ),
+                  th: ({ children }) => (
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      {children}
+                    </th>
+                  ),
+                  td: ({ children }) => (
+                    <td className="px-6 py-4 text-sm text-gray-700 dark:text-gray-300">
+                      <div className="max-w-xs break-words">{children}</div>
+                    </td>
                   ),
                 }}
               >
