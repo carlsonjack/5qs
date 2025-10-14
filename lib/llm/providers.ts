@@ -165,7 +165,8 @@ async function callNvidiaProvider(
   const modelMap = isFallback
     ? MODEL_MAPPINGS.nvidia_fallback
     : MODEL_MAPPINGS.nvidia_primary;
-  const model = modelMap[params.model || "default"] || modelMap.default;
+  const model =
+    modelMap[params.model as keyof typeof modelMap] || modelMap.default;
 
   const nimParams = {
     messages: params.messages,
@@ -197,7 +198,7 @@ async function callOpenAIProvider(
   }
 
   const model =
-    MODEL_MAPPINGS.openai[params.model || "default"] ||
+    MODEL_MAPPINGS.openai[params.model as keyof typeof MODEL_MAPPINGS.openai] ||
     MODEL_MAPPINGS.openai.default;
   const startTime = Date.now();
 
@@ -243,8 +244,9 @@ async function callAnthropicProvider(
   }
 
   const model =
-    MODEL_MAPPINGS.anthropic[params.model || "default"] ||
-    MODEL_MAPPINGS.anthropic.default;
+    MODEL_MAPPINGS.anthropic[
+      params.model as keyof typeof MODEL_MAPPINGS.anthropic
+    ] || MODEL_MAPPINGS.anthropic.default;
   const startTime = Date.now();
 
   // Convert system messages for Anthropic

@@ -6,7 +6,7 @@ async function testGuidedJSON() {
     console.log("Testing guided JSON with NVIDIA NIM...");
 
     const result = await chatCompletion({
-      model: "nvidia/llama-3.1-nemotron-70b-instruct",
+      model: "nvidia/llama-3.1-nemotron-ultra-253b-v1",
       messages: [
         {
           role: "system",

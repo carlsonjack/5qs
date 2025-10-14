@@ -404,7 +404,7 @@ Conversation to analyze:`;
         messages: summaryMessages,
         model:
           process.env.LLM_DEFAULT_MODEL ||
-          "nvidia/llama-3.1-nemotron-70b-instruct",
+          "nvidia/llama-3.1-nemotron-ultra-253b-v1",
         temperature: 0.0,
         top_p: 0.9,
         max_tokens: 200,
@@ -1345,7 +1345,7 @@ Based on our conversation, your business has significant opportunities for growt
             try {
               const fallbackModel =
                 process.env.LLM_DEFAULT_MODEL ||
-                "nvidia/llama-3.1-nemotron-70b-instruct";
+                "nvidia/llama-3.1-nemotron-ultra-253b-v1";
               const fallbackTokenLimit =
                 effectiveStep === 6 ? 800 : effectiveStep === 5 ? 600 : 300;
               const res = await chatCompletion({
