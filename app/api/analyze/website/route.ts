@@ -25,7 +25,7 @@ async function fetchWebsiteContent(url: string) {
     console.log("Fetching website content from:", microlinkUrl.toString());
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // Reduced timeout
 
     const response = await fetch(microlinkUrl.toString(), {
       headers: {
@@ -124,8 +124,21 @@ async function fetchWebsiteContent(url: string) {
     return limitedText;
   } catch (error) {
     console.error("Error with Microlink API:", error);
-    // Fallback to direct fetch
-    console.log("Falling back to direct fetch...");
+    // Check if it's a timeout or connection error
+    if (
+      error instanceof Error &&
+      (error.message.includes("aborted") ||
+        error.message.includes("ECONNRESET") ||
+        error.message.includes("timeout"))
+    ) {
+      console.log(
+        "Timeout/connection error with Microlink, falling back to direct fetch..."
+      );
+    } else {
+      console.log(
+        "Other error with Microlink, falling back to direct fetch..."
+      );
+    }
     return await fetchWebsiteDirectly(url);
   }
 }
@@ -135,7 +148,7 @@ async function fetchWebsiteDirectly(url: string): Promise<string> {
     console.log("Attempting direct fetch of:", url);
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    const timeoutId = setTimeout(() => controller.abort(), 8000); // Reduced timeout for direct fetch
 
     const response = await fetch(url, {
       headers: {
@@ -176,6 +189,25 @@ async function fetchWebsiteDirectly(url: string): Promise<string> {
     return textContent.substring(0, 3000);
   } catch (error) {
     console.error("Direct fetch also failed:", error);
+    // Provide a more helpful error message based on the error type
+    if (error instanceof Error) {
+      if (
+        error.message.includes("aborted") ||
+        error.message.includes("timeout")
+      ) {
+        throw new Error(
+          "Website request timed out. The site may be slow or temporarily unavailable."
+        );
+      } else if (error.message.includes("ECONNRESET")) {
+        throw new Error(
+          "Connection was reset by the website. The site may be blocking automated requests."
+        );
+      } else if (error.message.includes("fetch failed")) {
+        throw new Error(
+          "Unable to connect to the website. Please check the URL and try again."
+        );
+      }
+    }
     throw new Error(
       "Unable to extract content from website. The site may be protected or inaccessible."
     );

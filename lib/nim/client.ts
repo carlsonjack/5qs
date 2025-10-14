@@ -279,13 +279,15 @@ export async function chatCompletion(
 
   if (message) {
     pushCandidate(message.content);
-    pushCandidate((message as any).reasoning_content);
-    pushCandidate((message as any).notes);
+    // Skip reasoning_content and notes to prevent internal thinking from showing
+    // pushCandidate((message as any).reasoning_content);
+    // pushCandidate((message as any).notes);
   }
 
   pushCandidate(choice?.text);
   pushCandidate(choice?.content);
-  pushCandidate(choice?.reasoning_content);
+  // Skip reasoning_content to prevent internal thinking from showing
+  // pushCandidate(choice?.reasoning_content);
 
   if (!candidates.length) {
     pushCandidate(data?.content);

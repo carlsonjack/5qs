@@ -49,31 +49,43 @@ export function createClientFromRequest(request: NextRequest) {
 }
 
 export async function getUser() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser();
 
-  if (error) {
-    console.error("Error getting user:", error);
+    if (error) {
+      console.error("Error getting user:", error);
+      return null;
+    }
+
+    return user;
+  } catch (error) {
+    // Handle cases where auth session is missing or invalid
+    console.log("No valid auth session found, continuing without user");
     return null;
   }
-
-  return user;
 }
 
 export async function getSession() {
-  const supabase = await createClient();
-  const {
-    data: { session },
-    error,
-  } = await supabase.auth.getSession();
+  try {
+    const supabase = await createClient();
+    const {
+      data: { session },
+      error,
+    } = await supabase.auth.getSession();
 
-  if (error) {
-    console.error("Error getting session:", error);
+    if (error) {
+      console.error("Error getting session:", error);
+      return null;
+    }
+
+    return session;
+  } catch (error) {
+    // Handle cases where auth session is missing or invalid
+    console.log("No valid auth session found, continuing without session");
     return null;
   }
-
-  return session;
 }
