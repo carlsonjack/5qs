@@ -185,6 +185,7 @@ async function fetchWebsiteDirectly(url: string): Promise<string> {
 export async function POST(req: NextRequest) {
   return withDatabaseIntegration(req, async (db) => {
     let url: string = "";
+    const startTime = Date.now();
     try {
       const body = await req.json();
       url = body.url;
@@ -407,6 +408,15 @@ export async function POST(req: NextRequest) {
         };
 
         // Save fallback analysis to database
+        const processingTime = Date.now() - startTime;
+        console.log(
+          "DEBUG: startTime:",
+          startTime,
+          "currentTime:",
+          Date.now(),
+          "processingTime:",
+          processingTime
+        );
         await db.saveWebsiteAnalysis({
           url: validatedUrl.toString(),
           domain: validatedUrl.hostname,
@@ -419,7 +429,7 @@ export async function POST(req: NextRequest) {
           marketingWeaknesses: marketingWeaknesses,
           contentSample: websiteContent.substring(0, 200) + "...",
           analysisMethod: "fallback",
-          processingTime: Date.now(),
+          processingTime: processingTime,
           confidence: 0.3,
         });
 
@@ -487,6 +497,15 @@ export async function POST(req: NextRequest) {
       console.log("Website analysis result:", analysisResult);
 
       // Save successful analysis to database
+      const processingTimeSuccess = Date.now() - startTime;
+      console.log(
+        "DEBUG SUCCESS: startTime:",
+        startTime,
+        "currentTime:",
+        Date.now(),
+        "processingTime:",
+        processingTimeSuccess
+      );
       await db.saveWebsiteAnalysis({
         url: validatedUrl.toString(),
         domain: validatedUrl.hostname,
@@ -501,7 +520,7 @@ export async function POST(req: NextRequest) {
           analysisResult.contentSample ||
           websiteContent.substring(0, 200) + "...",
         analysisMethod: "nvidia_api",
-        processingTime: Date.now(),
+        processingTime: processingTimeSuccess,
         confidence: 0.8,
       });
 

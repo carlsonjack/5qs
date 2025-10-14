@@ -69,27 +69,27 @@ const PROVIDERS: Record<string, AIProvider> = {
 // Model mappings for each provider
 const MODEL_MAPPINGS = {
   nvidia_primary: {
-    "nvidia/llama-3.1-nemotron-70b-instruct":
-      "nvidia/llama-3.1-nemotron-70b-instruct",
     "nvidia/llama-3.1-nemotron-ultra-253b-v1":
       "nvidia/llama-3.1-nemotron-ultra-253b-v1",
-    default: "nvidia/llama-3.1-nemotron-70b-instruct",
+    "nvidia/llama-3.1-nemotron-nano-4b-v1.1":
+      "nvidia/llama-3.1-nemotron-nano-4b-v1.1",
+    default: "nvidia/llama-3.1-nemotron-ultra-253b-v1",
   },
   nvidia_fallback: {
-    "nvidia/llama-3.1-nemotron-70b-instruct":
-      "nvidia/llama-3.1-nemotron-70b-instruct",
     "nvidia/llama-3.1-nemotron-ultra-253b-v1":
-      "nvidia/llama-3.1-nemotron-70b-instruct", // Use smaller model as fallback
-    default: "nvidia/llama-3.1-nemotron-70b-instruct",
+      "nvidia/llama-3.1-nemotron-nano-4b-v1.1", // Use smaller model as fallback
+    "nvidia/llama-3.1-nemotron-nano-4b-v1.1":
+      "nvidia/llama-3.1-nemotron-nano-4b-v1.1",
+    default: "nvidia/llama-3.1-nemotron-nano-4b-v1.1",
   },
   openai: {
-    "nvidia/llama-3.1-nemotron-70b-instruct": "gpt-4o-mini",
     "nvidia/llama-3.1-nemotron-ultra-253b-v1": "gpt-4o",
+    "nvidia/llama-3.1-nemotron-nano-4b-v1.1": "gpt-4o-mini",
     default: "gpt-4o-mini",
   },
   anthropic: {
-    "nvidia/llama-3.1-nemotron-70b-instruct": "claude-3-haiku-20240307",
     "nvidia/llama-3.1-nemotron-ultra-253b-v1": "claude-3-5-sonnet-20241022",
+    "nvidia/llama-3.1-nemotron-nano-4b-v1.1": "claude-3-haiku-20240307",
     default: "claude-3-haiku-20240307",
   },
 };
@@ -99,7 +99,7 @@ async function checkNvidiaHealth(): Promise<boolean> {
   try {
     const result = await nimChatCompletion({
       messages: [{ role: "user", content: "Hi" }],
-      model: "nvidia/llama-3.1-nemotron-70b-instruct",
+      model: "nvidia/llama-3.1-nemotron-ultra-253b-v1",
       max_tokens: 10,
       temperature: 0.1,
     });

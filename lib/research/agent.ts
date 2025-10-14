@@ -34,7 +34,8 @@ export async function runResearchAgent({
   const planRes = await chatCompletion({
     messages: plannerMessages,
     model:
-      process.env.LLM_DEFAULT_MODEL || "nvidia/llama-3.1-nemotron-70b-instruct",
+      process.env.LLM_DEFAULT_MODEL ||
+      "nvidia/llama-3.1-nemotron-ultra-253b-v1",
     temperature: 0.3,
     top_p: 0.9,
     max_tokens: 600,
@@ -82,7 +83,8 @@ export async function runResearchAgent({
       { role: "user", content: finalPrompt },
     ],
     model:
-      process.env.LLM_DEFAULT_MODEL || "nvidia/llama-3.1-nemotron-70b-instruct",
+      process.env.LLM_DEFAULT_MODEL ||
+      "nvidia/llama-3.1-nemotron-ultra-253b-v1",
     temperature: 0.3,
     top_p: 0.9,
     max_tokens: 300,

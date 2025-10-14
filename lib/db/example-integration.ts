@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
         const businessPlan = await saveBusinessPlan(db, {
           content: businessPlanContent,
           planLength: businessPlanContent.length,
-          modelUsed: "nvidia/llama-3.1-nemotron-70b-instruct",
+          modelUsed: "nvidia/llama-3.1-nemotron-ultra-253b-v1",
           planHighlights: ["Key insight 1", "Key insight 2"],
         });
 

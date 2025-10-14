@@ -753,6 +753,7 @@ ${messages.map((msg) => `${msg.role}: ${msg.content}`).join("\n\n")}
 - Be thorough and focus on high-impact recommendations
 - Ensure proper markdown formatting with adequate spacing for readability`;
 
+    // Move planModel declaration outside try-catch to avoid scope issues
     const planModel = chooseModel({
       phase: "plan",
       docStats: { pages: 0, sources: 0, conflicts: false },

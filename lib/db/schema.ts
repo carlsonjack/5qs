@@ -372,7 +372,7 @@ export const websiteAnalyses = pgTable(
 
     // Processing metadata
     analysisMethod: text("analysis_method"), // "microlink", "direct", "fallback"
-    processingTime: integer("processing_time"),
+    processingTime: integer("processing_time"), // processing duration in milliseconds
     confidence: real("confidence"),
 
     // Timestamps

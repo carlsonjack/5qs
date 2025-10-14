@@ -76,7 +76,8 @@ Materials:
 
   const resp = await chatCompletion({
     model:
-      process.env.LLM_DEFAULT_MODEL || "nvidia/llama-3.1-nemotron-70b-instruct",
+      process.env.LLM_DEFAULT_MODEL ||
+      "nvidia/llama-3.1-nemotron-ultra-253b-v1",
     messages: [
       { role: "system", content: SYSTEM },
       { role: "user", content: prompt },
@@ -93,7 +94,7 @@ Materials:
     const retry = await chatCompletion({
       model:
         process.env.LLM_DEFAULT_MODEL ||
-        "nvidia/llama-3.1-nemotron-70b-instruct",
+        "nvidia/llama-3.1-nemotron-ultra-253b-v1",
       messages: [
         { role: "system", content: SYSTEM },
         { role: "user", content: prompt },

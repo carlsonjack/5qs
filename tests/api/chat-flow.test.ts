@@ -12,7 +12,7 @@ describe("Chat API Flow Tests", () => {
   beforeAll(async () => {
     const dev = process.env.NODE_ENV !== "production";
     const hostname = "localhost";
-    const port = 3002; // Use different port for testing
+    const port = 3004; // Use different port for testing
 
     const nextApp = next({ dev, hostname, port });
     const handle = nextApp.getRequestHandler();
@@ -245,4 +245,3 @@ describe("Chat API Flow Tests", () => {
     });
   });
 });
-
