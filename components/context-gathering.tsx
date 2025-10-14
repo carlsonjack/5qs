@@ -15,12 +15,14 @@ import { useToast } from "@/hooks/use-toast";
 import { ArrowRight, Loader2, CheckCircle } from "lucide-react";
 
 interface ContextGatheringProps {
+  variant?: string | null;
   onComplete: (contextData: any) => void;
   onSkip: () => void;
   onDataUpdate?: (contextData: any) => void; // New callback for immediate sidebar updates
 }
 
 export function ContextGathering({
+  variant,
   onComplete,
   onSkip,
   onDataUpdate,
@@ -33,8 +35,14 @@ export function ContextGathering({
   const handleFileProcessed = (data: any) => {
     setFinancialData(data);
     toast({
-      title: "Financial data processed",
-      description: "Your financial data has been analyzed successfully.",
+      title:
+        variant === "fitness-coach"
+          ? "Fitness data processed"
+          : "Financial data processed",
+      description:
+        variant === "fitness-coach"
+          ? "Your fitness data has been analyzed successfully."
+          : "Your financial data has been analyzed successfully.",
     });
 
     // Update sidebar immediately
@@ -51,8 +59,14 @@ export function ContextGathering({
   const handleWebsiteProcessed = (data: any) => {
     setWebsiteData(data);
     toast({
-      title: "Website analyzed successfully! 🎉",
-      description: "We've extracted key business insights from your website.",
+      title:
+        variant === "fitness-coach"
+          ? "Channel analyzed successfully! 🎉"
+          : "Website analyzed successfully! 🎉",
+      description:
+        variant === "fitness-coach"
+          ? "We've extracted key fitness insights from your favorite channel."
+          : "We've extracted key business insights from your website.",
     });
 
     // Update sidebar immediately
@@ -106,17 +120,24 @@ export function ContextGathering({
     <div className="max-w-6xl mx-auto p-4 space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Add Business Context</CardTitle>
+          <CardTitle>
+            {variant === "fitness-coach"
+              ? "Add Fitness Context"
+              : "Add Business Context"}
+          </CardTitle>
           <CardDescription>
-            Provide additional context about your business to get more
-            personalized insights.
+            {variant === "fitness-coach"
+              ? "Provide additional context about your fitness journey to get more personalized insights."
+              : "Provide additional context about your business to get more personalized insights."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="max-w-2xl mx-auto space-y-6">
             <div className="space-y-2">
               <h3 className="text-sm font-medium">
-                Analyze Your Business Website
+                {variant === "fitness-coach"
+                  ? "Share Your Favorite Workout Channel"
+                  : "Analyze Your Business Website"}
               </h3>
               <WebsiteInput
                 onWebsiteProcessed={handleWebsiteProcessed}
@@ -125,10 +146,15 @@ export function ContextGathering({
             </div>
 
             <div className="space-y-2">
-              <h3 className="text-sm font-medium">Upload Relevant Documents</h3>
+              <h3 className="text-sm font-medium">
+                {variant === "fitness-coach"
+                  ? "Upload Fitness Documents"
+                  : "Upload Relevant Documents"}
+              </h3>
               <p className="text-sm text-muted-foreground">
-                Financial statements, business plans, marketing materials, or
-                any documents that help us understand your business better.
+                {variant === "fitness-coach"
+                  ? "Workout plans, nutrition guides, progress photos, or any documents that help us understand your fitness journey better."
+                  : "Financial statements, business plans, marketing materials, or any documents that help us understand your business better."}
                 <span className="font-medium text-green-600">
                   {" "}
                   Your files are processed locally and never stored on our

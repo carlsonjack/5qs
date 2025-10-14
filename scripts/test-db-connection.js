@@ -65,6 +65,6 @@ async function testDatabaseConnection() {
 }
 
 // Load environment variables
-require("dotenv").config({ path: ".env.local" });
+require("dotenv").config({ path: ".env" });
 
 testDatabaseConnection();

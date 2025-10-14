@@ -46,14 +46,14 @@ export const users = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
     lastSeenAt: timestamp("last_seen_at").defaultNow(),
-    
+
     // User preferences and metadata
     preferences: jsonb("preferences").$type<{
       emailNotifications?: boolean;
       marketingOptIn?: boolean;
       timezone?: string;
     }>(),
-    
+
     // Tracking fields
     utmSource: text("utm_source"),
     utmMedium: text("utm_medium"),
@@ -76,17 +76,20 @@ export const conversations = pgTable(
     userId: uuid("user_id").references(() => users.id),
     sessionId: text("session_id").notNull(), // For anonymous sessions
     status: conversationStatusEnum("status").default("active").notNull(),
-    
+
     // Conversation metadata
     currentStep: integer("current_step").default(1).notNull(),
     isCompleted: boolean("is_completed").default(false).notNull(),
     totalMessages: integer("total_messages").default(0).notNull(),
-    
+
+    // Variant / profile tracking
+    appVariant: text("app_variant"),
+
     // Timestamps
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
     completedAt: timestamp("completed_at"),
-    
+
     // Context and analysis data
     contextSummary: jsonb("context_summary").$type<{
       businessType?: string;
@@ -96,19 +99,21 @@ export const conversations = pgTable(
       priorTechUse?: string;
       growthIntent?: string;
     }>(),
-    
+
     initialContext: jsonb("initial_context"),
     websiteAnalysis: jsonb("website_analysis"),
     financialAnalysis: jsonb("financial_analysis"),
-    
+
     // Research and citations
     researchBrief: text("research_brief"),
-    citations: jsonb("citations").$type<Array<{
-      sourceId: string;
-      page?: number;
-      url?: string;
-    }>>(),
-    
+    citations: jsonb("citations").$type<
+      Array<{
+        sourceId: string;
+        page?: number;
+        url?: string;
+      }>
+    >(),
+
     // Lead scoring data
     leadSignals: jsonb("lead_signals").$type<{
       budgetBand?: string;
@@ -139,31 +144,35 @@ export const messages = pgTable(
   "messages",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    conversationId: uuid("conversation_id").references(() => conversations.id, {
-      onDelete: "cascade",
-    }).notNull(),
-    
+    conversationId: uuid("conversation_id")
+      .references(() => conversations.id, {
+        onDelete: "cascade",
+      })
+      .notNull(),
+
     role: text("role").notNull(), // "user" | "assistant" | "system"
     content: text("content").notNull(),
-    
+
     // Message metadata
     stepNumber: integer("step_number"),
     isBusinessPlan: boolean("is_business_plan").default(false),
     isFallback: boolean("is_fallback").default(false),
-    
+
     // AI model information
     modelUsed: text("model_used"),
     tokenCount: integer("token_count"),
     responseTime: integer("response_time"), // milliseconds
-    
+
     // Timestamps
     createdAt: timestamp("created_at").defaultNow().notNull(),
-    
+
     // Additional metadata
     metadata: jsonb("metadata"),
   },
   (table) => ({
-    conversationIdIdx: index("messages_conversation_id_idx").on(table.conversationId),
+    conversationIdIdx: index("messages_conversation_id_idx").on(
+      table.conversationId
+    ),
     roleIdx: index("messages_role_idx").on(table.role),
     createdAtIdx: index("messages_created_at_idx").on(table.createdAt),
   })
@@ -174,42 +183,46 @@ export const businessPlans = pgTable(
   "business_plans",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    conversationId: uuid("conversation_id").references(() => conversations.id).notNull(),
+    conversationId: uuid("conversation_id")
+      .references(() => conversations.id)
+      .notNull(),
     userId: uuid("user_id").references(() => users.id),
-    
+
     // Plan content
     title: text("title"),
     content: text("content").notNull(), // Markdown content
     htmlContent: text("html_content"), // HTML version for emails
-    
+
     // Plan metadata
     status: planStatusEnum("status").default("generated").notNull(),
     planLength: integer("plan_length"), // Character count
     generationTime: integer("generation_time"), // milliseconds
-    
+
     // AI generation details
     modelUsed: text("model_used"),
     promptVersion: text("prompt_version"),
     templateUsed: text("template_used"),
-    
+
     // Delivery tracking
     deliveredAt: timestamp("delivered_at"),
     deliveredTo: text("delivered_to"), // email address
     viewedAt: timestamp("viewed_at"),
     downloadedAt: timestamp("downloaded_at"),
     downloadCount: integer("download_count").default(0),
-    
+
     // Quality metrics
     planHighlights: jsonb("plan_highlights").$type<string[]>(),
     estimatedROI: text("estimated_roi"),
     implementationTimeline: text("implementation_timeline"),
-    
+
     // Timestamps
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => ({
-    conversationIdIdx: index("business_plans_conversation_id_idx").on(table.conversationId),
+    conversationIdIdx: index("business_plans_conversation_id_idx").on(
+      table.conversationId
+    ),
     userIdIdx: index("business_plans_user_id_idx").on(table.userId),
     statusIdx: index("business_plans_status_idx").on(table.status),
     createdAtIdx: index("business_plans_created_at_idx").on(table.createdAt),
@@ -224,18 +237,22 @@ export const leads = pgTable(
     userId: uuid("user_id").references(() => users.id),
     conversationId: uuid("conversation_id").references(() => conversations.id),
     businessPlanId: uuid("business_plan_id").references(() => businessPlans.id),
-    
+
     // Lead identification
     email: text("email").notNull(),
     firstName: text("first_name"),
     lastName: text("last_name"),
     company: text("company"),
-    
+
+    // Tracking
+    ipAddress: text("ip_address"),
+    appVariant: text("app_variant"),
+
     // Lead status and scoring
     status: leadStatusEnum("status").default("new").notNull(),
     score: integer("score").default(0), // 0-100
     temperature: text("temperature"), // "hot", "warm", "cold"
-    
+
     // Lead qualification data
     budgetBand: text("budget_band"),
     authority: text("authority"),
@@ -244,30 +261,30 @@ export const leads = pgTable(
     dataReadiness: text("data_readiness"),
     stackMaturity: text("stack_maturity"),
     complexity: text("complexity"),
-    
+
     // Business context
     industry: text("industry"),
     geography: text("geography"),
     businessType: text("business_type"),
     painPoints: text("pain_points"),
     goals: text("goals"),
-    
+
     // Engagement tracking
     websiteFound: boolean("website_found").default(false),
     documentsUploaded: integer("documents_uploaded").default(0),
     researchCoverage: real("research_coverage"), // 0-100%
-    
+
     // Contact attempts and notes
     contactAttempts: integer("contact_attempts").default(0),
     lastContactedAt: timestamp("last_contacted_at"),
     nextFollowUpAt: timestamp("next_follow_up_at"),
     notes: text("notes"),
-    
+
     // Conversion tracking
     convertedAt: timestamp("converted_at"),
     conversionValue: real("conversion_value"),
     conversionType: text("conversion_type"), // "consultation", "contract", "referral"
-    
+
     // Timestamps
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -286,35 +303,39 @@ export const fileUploads = pgTable(
   "file_uploads",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    conversationId: uuid("conversation_id").references(() => conversations.id).notNull(),
+    conversationId: uuid("conversation_id")
+      .references(() => conversations.id)
+      .notNull(),
     userId: uuid("user_id").references(() => users.id),
-    
+
     // File information
     fileName: text("file_name").notNull(),
     fileType: text("file_type").notNull(), // "pdf", "csv", "txt"
     fileSize: integer("file_size"), // bytes
     filePath: text("file_path"), // if stored permanently
-    
+
     // Processing status
     status: text("status").default("uploaded").notNull(), // "uploaded", "processing", "analyzed", "failed"
     processingTime: integer("processing_time"), // milliseconds
-    
+
     // Analysis results
     extractedText: text("extracted_text"),
     analysis: jsonb("analysis"), // Structured analysis results
     confidence: real("confidence"), // 0-1 analysis confidence
-    
+
     // Error handling
     errorMessage: text("error_message"),
     retryCount: integer("retry_count").default(0),
-    
+
     // Timestamps
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
     analyzedAt: timestamp("analyzed_at"),
   },
   (table) => ({
-    conversationIdIdx: index("file_uploads_conversation_id_idx").on(table.conversationId),
+    conversationIdIdx: index("file_uploads_conversation_id_idx").on(
+      table.conversationId
+    ),
     statusIdx: index("file_uploads_status_idx").on(table.status),
     createdAtIdx: index("file_uploads_created_at_idx").on(table.createdAt),
   })
@@ -325,39 +346,43 @@ export const websiteAnalyses = pgTable(
   "website_analyses",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    conversationId: uuid("conversation_id").references(() => conversations.id).notNull(),
+    conversationId: uuid("conversation_id")
+      .references(() => conversations.id)
+      .notNull(),
     userId: uuid("user_id").references(() => users.id),
-    
+
     // Website information
     url: text("url").notNull(),
     domain: text("domain"),
     title: text("title"),
     description: text("description"),
-    
+
     // Analysis results
     productsServices: text("products_services"),
     customerSegment: text("customer_segment"),
     techStack: text("tech_stack"),
     marketingStrengths: text("marketing_strengths"),
     marketingWeaknesses: text("marketing_weaknesses"),
-    
+
     // Technical details
     contentSample: text("content_sample"),
     metaTags: jsonb("meta_tags"),
     socialLinks: jsonb("social_links").$type<string[]>(),
     contactInfo: jsonb("contact_info"),
-    
+
     // Processing metadata
     analysisMethod: text("analysis_method"), // "microlink", "direct", "fallback"
     processingTime: integer("processing_time"),
     confidence: real("confidence"),
-    
+
     // Timestamps
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => ({
-    conversationIdIdx: index("website_analyses_conversation_id_idx").on(table.conversationId),
+    conversationIdIdx: index("website_analyses_conversation_id_idx").on(
+      table.conversationId
+    ),
     urlIdx: index("website_analyses_url_idx").on(table.url),
     domainIdx: index("website_analyses_domain_idx").on(table.domain),
     createdAtIdx: index("website_analyses_created_at_idx").on(table.createdAt),
@@ -371,28 +396,28 @@ export const emailEvents = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     businessPlanId: uuid("business_plan_id").references(() => businessPlans.id),
     leadId: uuid("lead_id").references(() => leads.id),
-    
+
     // Email details
     toEmail: text("to_email").notNull(),
     fromEmail: text("from_email").notNull(),
     subject: text("subject").notNull(),
     emailType: text("email_type").notNull(), // "business_plan", "lead_notification", "follow_up"
-    
+
     // Delivery tracking
     messageId: text("message_id"), // from email provider
     status: text("status").notNull(), // "sent", "delivered", "opened", "clicked", "bounced", "failed"
     provider: text("provider").default("resend"), // "resend", "sendgrid", etc.
-    
+
     // Engagement metrics
     openedAt: timestamp("opened_at"),
     clickedAt: timestamp("clicked_at"),
     bouncedAt: timestamp("bounced_at"),
     unsubscribedAt: timestamp("unsubscribed_at"),
-    
+
     // Error handling
     errorMessage: text("error_message"),
     retryCount: integer("retry_count").default(0),
-    
+
     // Timestamps
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -413,22 +438,22 @@ export const analyticsEvents = pgTable(
     userId: uuid("user_id").references(() => users.id),
     conversationId: uuid("conversation_id").references(() => conversations.id),
     sessionId: text("session_id"),
-    
+
     // Event details
     eventType: text("event_type").notNull(), // "page_view", "chat_start", "plan_generated", etc.
     eventName: text("event_name").notNull(),
     properties: jsonb("properties"),
-    
+
     // Context
     page: text("page"),
     userAgent: text("user_agent"),
     ipAddress: text("ip_address"),
     referrer: text("referrer"),
-    
+
     // Performance metrics
     loadTime: integer("load_time"), // milliseconds
     responseTime: integer("response_time"), // milliseconds
-    
+
     // Timestamps
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
@@ -445,31 +470,31 @@ export const systemHealth = pgTable(
   "system_health",
   {
     id: serial("id").primaryKey(),
-    
+
     // Service information
     service: text("service").notNull(), // "nvidia_api", "openai_api", "resend", etc.
     endpoint: text("endpoint"),
     method: text("method"), // "GET", "POST", etc.
-    
+
     // Request/Response details
     requestId: text("request_id"),
     statusCode: integer("status_code"),
     responseTime: integer("response_time"), // milliseconds
-    
+
     // Success/Error tracking
     success: boolean("success").notNull(),
     errorMessage: text("error_message"),
     errorType: text("error_type"), // "timeout", "rate_limit", "auth", etc.
-    
+
     // Performance metrics
     tokensUsed: integer("tokens_used"),
     costEstimate: real("cost_estimate"), // USD
     modelUsed: text("model_used"),
-    
+
     // Context
     userId: uuid("user_id").references(() => users.id),
     conversationId: uuid("conversation_id").references(() => conversations.id),
-    
+
     // Timestamps
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },

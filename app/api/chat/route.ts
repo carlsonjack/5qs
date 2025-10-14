@@ -7,11 +7,13 @@ import {
   planSystemPrompt,
 } from "@/lib/prompts";
 import { chooseModel, shouldTriggerResearch } from "@/lib/llm/router";
+import { getProfile } from "@/lib/profiles";
 import { ContextSummarySchema, GuidedJsonSchemaForNIM } from "@/lib/schemas";
 import { filterOutput } from "@/lib/safety";
 import { runResearchAgent } from "@/lib/research/agent";
 import { extractLeadSignals } from "@/lib/extractors/leadSignals";
 import { computeLeadScore } from "@/lib/lead/score";
+import { withDatabaseIntegration } from "@/lib/db/integration";
 
 const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY;
 const NVIDIA_API_URL =
@@ -619,12 +621,16 @@ async function generateBusinessPlan(
     financialAnalysis?: any;
     researchBrief?: string | null;
     citations?: Array<{ sourceId: string; page?: number; url?: string }>;
+    planPrompt?: string;
+    attachedFiles?: Array<{ name: string; content: string }>;
   }
 ): Promise<string> {
   try {
     console.log("Triggering business plan generation");
 
-    const businessPlanPrompt = `You are an expert AI strategy consultant. Create a comprehensive, actionable AI Implementation Plan for this specific business. The plan must be substantially longer and more valuable than typical business plans, with specific vendor recommendations and industry insights.
+    const businessPlanPrompt =
+      options?.planPrompt ||
+      `You are an expert AI strategy consultant. Create a comprehensive, actionable AI Implementation Plan for this specific business. The plan must be substantially longer and more valuable than typical business plans, with specific vendor recommendations and industry insights.
 
 **FORMATTING REQUIREMENTS:**
 - Use proper markdown formatting with clear headings
@@ -692,16 +698,28 @@ ${JSON.stringify(contextSummary, null, 2)}
 Initial Context: ${JSON.stringify(options?.initialContext ?? null, null, 2)}
 Website Analysis: ${JSON.stringify(options?.websiteAnalysis ?? null, null, 2)}
 Financial Analysis: ${JSON.stringify(
-      options?.financialAnalysis ?? null,
-      null,
-      2
-    )}
+        options?.financialAnalysis ?? null,
+        null,
+        2
+      )}
 
 **Research Intelligence:**
 ${
   options?.researchBrief
     ? `Research Brief: ${options.researchBrief}`
     : "No additional research available"
+}
+
+**User-Provided Documents:**
+${
+  options?.attachedFiles && options.attachedFiles.length > 0
+    ? options.attachedFiles
+        .map(
+          (file) =>
+            `\n--- Content from ${file.name} ---\n${file.content}\n--- End of ${file.name} ---`
+        )
+        .join("\n")
+    : "No documents attached"
 }
 
 **Citations and Sources:**
@@ -881,190 +899,259 @@ This is a general template. For a fully personalized business plan based on your
 }
 
 export async function POST(req: NextRequest) {
-  let messages, currentStep, initialContext, websiteAnalysis, financialAnalysis;
+  return withDatabaseIntegration(req, async (db) => {
+    let messages,
+      currentStep,
+      initialContext,
+      websiteAnalysis,
+      financialAnalysis,
+      attachedFiles;
+    let rawBody: any = null;
 
-  try {
-    const body = await req.json();
-    messages = body.messages;
-    currentStep = body.currentStep;
-    initialContext = body.initialContext;
-    websiteAnalysis = body.websiteAnalysis;
-    financialAnalysis = body.financialAnalysis;
-  } catch (parseError) {
-    console.error("Error parsing request body:", parseError);
-    return NextResponse.json(
-      { error: "Invalid request body" },
-      { status: 400 }
-    );
-  }
+    try {
+      rawBody = await req.json();
+      messages = rawBody.messages;
+      currentStep = rawBody.currentStep;
+      initialContext = rawBody.initialContext;
+      websiteAnalysis = rawBody.websiteAnalysis;
+      financialAnalysis = rawBody.financialAnalysis;
+      attachedFiles = rawBody.attachedFiles;
+    } catch (parseError) {
+      console.error("Error parsing request body:", parseError);
+      return NextResponse.json(
+        { error: "Invalid request body" },
+        { status: 400 }
+      );
+    }
 
-  try {
-    console.log(
-      `Processing request - Step: ${currentStep}, Messages: ${messages.length}`
-    );
+    try {
+      const variant =
+        req.nextUrl.searchParams.get("v") || rawBody?.variant || null;
+      const profile = getProfile(variant);
+      console.log(
+        `Processing request - Step: ${currentStep}, Messages: ${messages.length}`
+      );
 
-    // Derive a reliable step server-side to avoid client desync during failures
-    const userMessages = messages.filter((msg: any) => msg.role === "user");
-    const assistantMessages = messages.filter(
-      (msg: any) => msg.role === "assistant"
-    );
-    // Step should be based on assistant messages (questions asked)
-    const derivedStep = Math.min(6, assistantMessages.length + 1);
-    const effectiveStep = Math.max(currentStep || 1, derivedStep);
+      // Track analytics event
+      await db.trackEvent("chat_request", "chat_message", {
+        step: currentStep,
+        messageCount: messages.length,
+        variant: variant,
+        hasWebsiteAnalysis: !!websiteAnalysis,
+        hasFinancialAnalysis: !!financialAnalysis,
+        hasAttachedFiles: !!(attachedFiles && attachedFiles.length > 0),
+      });
 
-    // Only generate business plan if we have 6 user messages AND 6 assistant messages (user confirmed after summary)
-    // This means: 5 Q&A pairs + 1 summary from AI + 1 confirmation from user
-    const reachedPlanGeneration =
-      userMessages.length >= 6 && assistantMessages.length >= 6;
-    const isBusinessPlanStep = reachedPlanGeneration;
+      // Derive a reliable step server-side to avoid client desync during failures
+      const userMessages = messages.filter((msg: any) => msg.role === "user");
+      const assistantMessages = messages.filter(
+        (msg: any) => msg.role === "assistant"
+      );
+      // Step should be based on assistant messages (questions asked)
+      const derivedStep = Math.min(6, assistantMessages.length + 1);
+      const effectiveStep = Math.max(currentStep || 1, derivedStep);
 
-    if (isBusinessPlanStep) {
-      console.log("Step 6 complete - triggering business plan generation...");
-      console.log("Triggering business plan generation");
+      // Only generate business plan if we have 6 user messages AND 6 assistant messages (user confirmed after summary)
+      // This means: 5 Q&A pairs + 1 summary from AI + 1 confirmation from user
+      const reachedPlanGeneration =
+        userMessages.length >= 6 && assistantMessages.length >= 6;
+      const isBusinessPlanStep = profile.generatePlan && reachedPlanGeneration;
 
-      try {
-        // Generate or update the context summary
-        const contextSummary = await generateContextSummary(messages, {
-          initialContext,
-          websiteAnalysis,
-          financialAnalysis,
-        });
+      if (isBusinessPlanStep) {
+        console.log("Step 6 complete - triggering business plan generation...");
+        console.log("Triggering business plan generation");
 
-        // Compute doc stats and research mode
-        const webLen =
-          typeof websiteAnalysis?.contentSample === "string"
-            ? websiteAnalysis.contentSample.length
-            : 0;
-        const finLen =
-          typeof financialAnalysis?.extractedTextSample === "string"
-            ? financialAnalysis.extractedTextSample.length
-            : 0;
-        const pages = Math.round((webLen + finLen) / 1500);
-        const sources = (websiteAnalysis ? 1 : 0) + (financialAnalysis ? 1 : 0);
-        const wType = websiteAnalysis?.productsServices;
-        const fType = financialAnalysis?.businessType;
-        const conflicts = Boolean(
-          wType &&
-            fType &&
-            wType !== "Business offerings not clearly specified" &&
-            fType !== "Business Entity" &&
-            wType !== fType
-        );
-        const docStats = { pages, sources, conflicts };
-
-        // Optional deep research
-        const deepResearch =
-          (process.env.DEEP_RESEARCH_ENABLED || "true").toLowerCase() ===
-          "true";
-        let researchBrief: string | null = null;
-        let citations:
-          | Array<{ sourceId: string; page?: number; url?: string }>
-          | undefined;
-        if (
-          deepResearch &&
-          shouldTriggerResearch({
-            docStats,
-            userQuery: userMessages[userMessages.length - 1]?.content || "",
-          })
-        ) {
-          const research = await runResearchAgent({
-            userQuery: userMessages[userMessages.length - 1]?.content || "",
-            goals: contextSummary?.goals,
-          });
-          researchBrief = research?.research_brief || null;
-          citations = research?.citations;
-        }
-
-        // Generate the business plan
-        const businessPlanMarkdown = await generateBusinessPlan(
-          messages,
-          contextSummary || initialContext,
-          {
+        try {
+          // Generate or update the context summary
+          const contextSummary = await generateContextSummary(messages, {
             initialContext,
             websiteAnalysis,
             financialAnalysis,
-            researchBrief,
-            citations,
-          }
-        );
+          });
 
-        console.log("Business plan generation completed successfully");
+          // Compute doc stats and research mode
+          const webLen =
+            typeof websiteAnalysis?.contentSample === "string"
+              ? websiteAnalysis.contentSample.length
+              : 0;
+          const finLen =
+            typeof financialAnalysis?.extractedTextSample === "string"
+              ? financialAnalysis.extractedTextSample.length
+              : 0;
+          const pages = Math.round((webLen + finLen) / 1500);
+          const sources =
+            (websiteAnalysis ? 1 : 0) + (financialAnalysis ? 1 : 0);
+          const wType = websiteAnalysis?.productsServices;
+          const fType = financialAnalysis?.businessType;
+          const conflicts = Boolean(
+            wType &&
+              fType &&
+              wType !== "Business offerings not clearly specified" &&
+              fType !== "Business Entity" &&
+              wType !== fType
+          );
+          const docStats = { pages, sources, conflicts };
 
-        // Return both the context summary and business plan
-        const filtered = filterOutput(businessPlanMarkdown);
-
-        // LeadSignals extraction (feature-flagged)
-        const LEAD_SIGNALS_ENABLED =
-          (process.env.LEAD_SIGNALS_ENABLED || "true").toLowerCase() === "true";
-        let leadSignals: any = undefined;
-        if (LEAD_SIGNALS_ENABLED) {
-          try {
-            const conversationText = messages
-              .map((m: any) => `${m.role}: ${m.content}`)
-              .join("\n");
-            const ls = await extractLeadSignals({
-              conversationText,
-              contextSummaryJSON: JSON.stringify(contextSummary || {}),
-              websiteAnalysis:
-                typeof websiteAnalysis === "object"
-                  ? JSON.stringify(websiteAnalysis)
-                  : String(websiteAnalysis || ""),
-              financialsAnalysis:
-                typeof financialAnalysis === "object"
-                  ? JSON.stringify(financialAnalysis)
-                  : String(financialAnalysis || ""),
-              researchBrief: researchBrief || undefined,
-              docsCount: sources,
-              websiteFound: Boolean(websiteAnalysis),
-              researchCoverage: researchBrief
-                ? Math.max(
-                    0,
-                    Math.min(
-                      100,
-                      researchBrief.length > 0
-                        ? citations?.length
-                          ? 60
-                          : 40
-                        : 0
-                    )
-                  )
-                : 0,
+          // Optional deep research
+          const deepResearch =
+            (process.env.DEEP_RESEARCH_ENABLED || "true").toLowerCase() ===
+            "true";
+          let researchBrief: string | null = null;
+          let citations:
+            | Array<{ sourceId: string; page?: number; url?: string }>
+            | undefined;
+          if (
+            deepResearch &&
+            shouldTriggerResearch({
+              docStats,
+              userQuery: userMessages[userMessages.length - 1]?.content || "",
+            })
+          ) {
+            const research = await runResearchAgent({
+              userQuery: userMessages[userMessages.length - 1]?.content || "",
+              goals: contextSummary?.goals,
             });
-            // ensure score sanity
-            if (
-              typeof ls.score !== "number" ||
-              ls.score < 0 ||
-              ls.score > 100
-            ) {
-              ls.score = computeLeadScore(ls);
-            }
-            leadSignals = ls;
-          } catch (e) {
-            console.warn("LeadSignals extraction failed", e);
+            researchBrief = research?.research_brief || null;
+            citations = research?.citations;
           }
-        }
-        return NextResponse.json({
-          message:
-            "Thank you for sharing all that information! I've prepared a customized business plan based on our conversation. You can review it below, copy it, or download it for your records.",
-          contextSummary: contextSummary,
-          businessPlanMarkdown: filtered.text,
-          isBusinessPlan: true, // Flag to help frontend identify this response
-          researchBrief: researchBrief || undefined,
-          citations,
-          leadSignals,
-          planHighlights: Array.from(
-            new Set(
-              (filtered.text.match(/^\s*-\s+.+$/gm) || [])
-                .slice(0, 3)
-                .map((s) => s.replace(/^\s*-\s+/, "").trim())
-            )
-          ),
-        });
-      } catch (planError) {
-        console.error("Business plan generation failed:", planError);
 
-        // Fallback: Still return a business plan even if generation fails
-        const fallbackPlan = `# Your Business Plan
+          // Generate the business plan
+          const businessPlanMarkdown = await generateBusinessPlan(
+            messages,
+            contextSummary || initialContext,
+            {
+              initialContext,
+              websiteAnalysis,
+              financialAnalysis,
+              researchBrief,
+              citations,
+              planPrompt: profile.planPrompt,
+              attachedFiles,
+            }
+          );
+
+          console.log("Business plan generation completed successfully");
+
+          // Save business plan to database
+          const businessPlan = await db.saveBusinessPlan({
+            title: `AI Implementation Plan - ${new Date().toLocaleDateString()}`,
+            content: businessPlanMarkdown,
+            planLength: businessPlanMarkdown.length,
+            generationTime: Date.now(), // This should be calculated properly
+            modelUsed: planModel,
+            planHighlights: Array.from(
+              new Set(
+                (businessPlanMarkdown.match(/^\s*-\s+.+$/gm) || [])
+                  .slice(0, 3)
+                  .map((s) => s.replace(/^\s*-\s+/, "").trim())
+              )
+            ),
+            estimatedROI: "15-25% efficiency improvement within 12 months",
+            implementationTimeline: "90-day phased approach",
+          });
+
+          // Update conversation context with final summary
+          await db.updateContext({
+            contextSummary,
+            websiteAnalysis,
+            financialAnalysis,
+            leadSignals,
+          });
+
+          // Save all messages to database
+          for (const message of messages) {
+            await db.saveMessage(message.role, message.content, {
+              stepNumber: effectiveStep,
+              isBusinessPlan:
+                message.role === "assistant" && isBusinessPlanStep,
+            });
+          }
+
+          // Track business plan generation event
+          await db.trackEvent("business_plan", "plan_generated", {
+            planId: businessPlan.id,
+            planLength: businessPlanMarkdown.length,
+            hasResearch: !!researchBrief,
+            citationsCount: citations?.length || 0,
+            leadScore: leadSignals?.score || 0,
+          });
+
+          // Return both the context summary and business plan
+          const filtered = filterOutput(businessPlanMarkdown);
+
+          // LeadSignals extraction (feature-flagged)
+          const LEAD_SIGNALS_ENABLED =
+            (process.env.LEAD_SIGNALS_ENABLED || "true").toLowerCase() ===
+            "true";
+          let leadSignals: any = undefined;
+          if (LEAD_SIGNALS_ENABLED) {
+            try {
+              const conversationText = messages
+                .map((m: any) => `${m.role}: ${m.content}`)
+                .join("\n");
+              const ls = await extractLeadSignals({
+                conversationText,
+                contextSummaryJSON: JSON.stringify(contextSummary || {}),
+                websiteAnalysis:
+                  typeof websiteAnalysis === "object"
+                    ? JSON.stringify(websiteAnalysis)
+                    : String(websiteAnalysis || ""),
+                financialsAnalysis:
+                  typeof financialAnalysis === "object"
+                    ? JSON.stringify(financialAnalysis)
+                    : String(financialAnalysis || ""),
+                researchBrief: researchBrief || undefined,
+                docsCount: sources,
+                websiteFound: Boolean(websiteAnalysis),
+                researchCoverage: researchBrief
+                  ? Math.max(
+                      0,
+                      Math.min(
+                        100,
+                        researchBrief.length > 0
+                          ? citations?.length
+                            ? 60
+                            : 40
+                          : 0
+                      )
+                    )
+                  : 0,
+              });
+              // ensure score sanity
+              if (
+                typeof ls.score !== "number" ||
+                ls.score < 0 ||
+                ls.score > 100
+              ) {
+                ls.score = computeLeadScore(ls);
+              }
+              leadSignals = ls;
+            } catch (e) {
+              console.warn("LeadSignals extraction failed", e);
+            }
+          }
+          return NextResponse.json({
+            message:
+              "Thank you for sharing all that information! I've prepared a customized business plan based on our conversation. You can review it below, copy it, or download it for your records.",
+            contextSummary: contextSummary,
+            businessPlanMarkdown: filtered.text,
+            isBusinessPlan: true, // Flag to help frontend identify this response
+            researchBrief: researchBrief || undefined,
+            citations,
+            leadSignals,
+            planHighlights: Array.from(
+              new Set(
+                (filtered.text.match(/^\s*-\s+.+$/gm) || [])
+                  .slice(0, 3)
+                  .map((s) => s.replace(/^\s*-\s+/, "").trim())
+              )
+            ),
+          });
+        } catch (planError) {
+          console.error("Business plan generation failed:", planError);
+
+          // Fallback: Still return a business plan even if generation fails
+          const fallbackPlan = `# Your Business Plan
 
 *Note: We encountered a technical issue generating your custom plan. Please try restarting the conversation for a fully personalized plan.*
 
@@ -1092,241 +1179,325 @@ Based on our conversation, your business has significant opportunities for growt
 ## 🔄 Get Your Custom Plan
 **Restart the conversation** to generate a fully personalized business plan, or contact our team for detailed consultation.`;
 
-        return NextResponse.json({
-          message:
-            "I've prepared a business plan template for you. For a fully customized plan, please restart the conversation with more specific details about your business.",
-          contextSummary: null,
-          businessPlanMarkdown: fallbackPlan,
-          isBusinessPlan: true,
-          fallback: true,
-        });
-      }
-    }
-
-    // Regular conversation flow (steps 1-5)
-    const additionalContext = {
-      initialContext: initialContext ?? null,
-      websiteAnalysis: websiteAnalysis ?? null,
-      financialAnalysis: financialAnalysis ?? null,
-    };
-
-    console.log(
-      "Additional context being passed to AI:",
-      JSON.stringify(additionalContext, null, 2)
-    );
-    // Build enhanced system prompt with context
-    let systemPrompt = discoverySystemPrompt(effectiveStep);
-
-    // Add context information to system prompt
-    if (
-      additionalContext.websiteAnalysis ||
-      additionalContext.financialAnalysis
-    ) {
-      systemPrompt += "\n\nAdditional Context Available:\n";
-
-      if (additionalContext.websiteAnalysis) {
-        systemPrompt += `\nWebsite Analysis:\n`;
-        systemPrompt += `- Business Type: ${
-          additionalContext.websiteAnalysis.productsServices || "Not specified"
-        }\n`;
-        systemPrompt += `- Customer Segment: ${
-          additionalContext.websiteAnalysis.customerSegment || "Not specified"
-        }\n`;
-        systemPrompt += `- Tech Stack: ${
-          additionalContext.websiteAnalysis.techStack || "Not specified"
-        }\n`;
-        systemPrompt += `- Marketing Strengths: ${
-          additionalContext.websiteAnalysis.marketingStrengths ||
-          "Not specified"
-        }\n`;
-        systemPrompt += `- Marketing Weaknesses: ${
-          additionalContext.websiteAnalysis.marketingWeaknesses ||
-          "Not specified"
-        }\n`;
-      }
-
-      if (additionalContext.financialAnalysis) {
-        systemPrompt += `\nFinancial Analysis:\n`;
-        systemPrompt += `- Business Type: ${
-          additionalContext.financialAnalysis.businessType || "Not specified"
-        }\n`;
-        systemPrompt += `- Revenue Trend: ${
-          additionalContext.financialAnalysis.revenueTrend || "Not specified"
-        }\n`;
-        systemPrompt += `- Largest Cost Centers: ${
-          additionalContext.financialAnalysis.largestCostCenters ||
-          "Not specified"
-        }\n`;
-        systemPrompt += `- Profit Margins: ${
-          additionalContext.financialAnalysis.profitMargins || "Not specified"
-        }\n`;
-        systemPrompt += `- Seasonality: ${
-          additionalContext.financialAnalysis.seasonality || "Not specified"
-        }\n`;
-        systemPrompt += `- Cash Flow Risks: ${
-          additionalContext.financialAnalysis.cashFlowRisks || "Not specified"
-        }\n`;
-      }
-
-      systemPrompt += `\nUse this context to personalize your questions and provide more relevant insights. Reference specific details when appropriate.`;
-    }
-
-    console.log("Making request to NIM for conversation...");
-
-    // Compute docStats for routing in intake as well
-    const webLen2 =
-      typeof websiteAnalysis?.contentSample === "string"
-        ? websiteAnalysis.contentSample.length
-        : 0;
-    const finLen2 =
-      typeof financialAnalysis?.extractedTextSample === "string"
-        ? financialAnalysis.extractedTextSample.length
-        : 0;
-    const pages2 = Math.round((webLen2 + finLen2) / 1500);
-    const sources2 = (websiteAnalysis ? 1 : 0) + (financialAnalysis ? 1 : 0);
-    const conflicts2 = false;
-    const intakeDocStats = {
-      pages: pages2,
-      sources: sources2,
-      conflicts: conflicts2,
-    };
-
-    const intakeModel = chooseModel({
-      phase: "intake",
-      docStats: intakeDocStats,
-      userFlags: {
-        costMode: (process.env.COST_MODE || "false").toLowerCase() === "true",
-      },
-    });
-
-    const stepContextDetails = extractContextDetails(initialContext);
-
-    const MAX_GUARD_RETRIES = 2;
-    let aiMessage: string | undefined;
-    let violation: StepDisciplineViolation | null = null;
-    let guardrailNote = "";
-
-    for (let attempt = 0; attempt <= MAX_GUARD_RETRIES; attempt++) {
-      const systemPromptWithGuard = guardrailNote
-        ? `${systemPrompt}\n\n${guardrailNote}`
-        : systemPrompt;
-
-      try {
-        // Increase token limit for final question (step 5) and summary step (step 6)
-        const tokenLimit =
-          effectiveStep === 6 ? 800 : effectiveStep === 5 ? 600 : 300;
-
-        const res = await reliableChatCompletion({
-          messages: [
-            { role: "system", content: systemPromptWithGuard },
-            ...messages,
-          ],
-          model: intakeModel,
-          temperature: 0.3,
-          top_p: 0.9,
-          max_tokens: tokenLimit,
-        });
-        aiMessage = res.content;
-      } catch (nimError: any) {
-        console.error("NIM chat error:", nimError);
-
-        if (nimError.status === 404) {
-          console.log(
-            `Model ${intakeModel} not found, trying fallback to default model`
-          );
-          try {
-            const fallbackModel =
-              process.env.LLM_DEFAULT_MODEL ||
-              "nvidia/llama-3.1-nemotron-70b-instruct";
-            const fallbackTokenLimit =
-              effectiveStep === 6 ? 800 : effectiveStep === 5 ? 600 : 300;
-            const res = await chatCompletion({
-              messages: [
-                { role: "system", content: systemPromptWithGuard },
-                ...messages,
-              ],
-              model: fallbackModel,
-              temperature: 0.3,
-              top_p: 0.9,
-              max_tokens: fallbackTokenLimit,
+          // Save all messages to database
+          for (const message of messages) {
+            await db.saveMessage(message.role, message.content, {
+              stepNumber: effectiveStep,
+              isBusinessPlan:
+                message.role === "assistant" && isBusinessPlanStep,
             });
-            aiMessage = res.content;
-            console.log(`Successfully used fallback model: ${fallbackModel}`);
-          } catch (fallbackError: any) {
-            console.error("Fallback model also failed:", fallbackError);
-            throw fallbackError;
           }
-        } else if (nimError.retryable) {
-          const fallbackMessage = `I'm experiencing some technical difficulties with our AI service right now. The system is temporarily unavailable, but I can still help you with basic questions.
-
-Could you please try again in a moment? The issue should resolve itself shortly.`;
 
           return NextResponse.json({
-            message: fallbackMessage,
-            fallback: true,
+            message:
+              "I've prepared a business plan template for you. For a fully customized plan, please restart the conversation with more specific details about your business.",
             contextSummary: null,
+            businessPlanMarkdown: fallbackPlan,
+            isBusinessPlan: true,
+            fallback: true,
           });
-        } else {
-          throw nimError;
         }
       }
 
+      // Regular conversation flow (steps 1-5)
+      const additionalContext = {
+        initialContext: initialContext ?? null,
+        websiteAnalysis: websiteAnalysis ?? null,
+        financialAnalysis: financialAnalysis ?? null,
+      };
+
+      console.log(
+        "Additional context being passed to AI:",
+        JSON.stringify(additionalContext, null, 2)
+      );
+      // Build enhanced system prompt with context
+      let systemPrompt = profile.discoveryPrompt(effectiveStep);
+
+      // Add attached files content to system prompt
+      if (attachedFiles && attachedFiles.length > 0) {
+        systemPrompt += "\n\n**User-Provided Documents:**\n";
+        for (const file of attachedFiles) {
+          systemPrompt += `\n--- Content from ${file.name} ---\n${file.content}\n--- End of ${file.name} ---\n`;
+        }
+        systemPrompt +=
+          "\nUse this document content to provide more specific and relevant responses. Reference specific details from these documents when appropriate.\n";
+      }
+
+      // Add context information to system prompt
+      if (
+        additionalContext.websiteAnalysis ||
+        additionalContext.financialAnalysis
+      ) {
+        systemPrompt += "\n\nAdditional Context Available:\n";
+
+        if (additionalContext.websiteAnalysis) {
+          systemPrompt += `\nWebsite Analysis:\n`;
+          systemPrompt += `- Business Type: ${
+            additionalContext.websiteAnalysis.productsServices ||
+            "Not specified"
+          }\n`;
+          systemPrompt += `- Customer Segment: ${
+            additionalContext.websiteAnalysis.customerSegment || "Not specified"
+          }\n`;
+          systemPrompt += `- Tech Stack: ${
+            additionalContext.websiteAnalysis.techStack || "Not specified"
+          }\n`;
+          systemPrompt += `- Marketing Strengths: ${
+            additionalContext.websiteAnalysis.marketingStrengths ||
+            "Not specified"
+          }\n`;
+          systemPrompt += `- Marketing Weaknesses: ${
+            additionalContext.websiteAnalysis.marketingWeaknesses ||
+            "Not specified"
+          }\n`;
+        }
+
+        if (additionalContext.financialAnalysis) {
+          systemPrompt += `\nFinancial Analysis:\n`;
+          systemPrompt += `- Business Type: ${
+            additionalContext.financialAnalysis.businessType || "Not specified"
+          }\n`;
+          systemPrompt += `- Revenue Trend: ${
+            additionalContext.financialAnalysis.revenueTrend || "Not specified"
+          }\n`;
+          systemPrompt += `- Largest Cost Centers: ${
+            additionalContext.financialAnalysis.largestCostCenters ||
+            "Not specified"
+          }\n`;
+          systemPrompt += `- Profit Margins: ${
+            additionalContext.financialAnalysis.profitMargins || "Not specified"
+          }\n`;
+          systemPrompt += `- Seasonality: ${
+            additionalContext.financialAnalysis.seasonality || "Not specified"
+          }\n`;
+          systemPrompt += `- Cash Flow Risks: ${
+            additionalContext.financialAnalysis.cashFlowRisks || "Not specified"
+          }\n`;
+        }
+
+        systemPrompt += `\nUse this context to personalize your questions and provide more relevant insights. Reference specific details when appropriate.`;
+      }
+
+      console.log("Making request to NIM for conversation...");
+
+      // Compute docStats for routing in intake as well
+      const webLen2 =
+        typeof websiteAnalysis?.contentSample === "string"
+          ? websiteAnalysis.contentSample.length
+          : 0;
+      const finLen2 =
+        typeof financialAnalysis?.extractedTextSample === "string"
+          ? financialAnalysis.extractedTextSample.length
+          : 0;
+      const pages2 = Math.round((webLen2 + finLen2) / 1500);
+      const sources2 = (websiteAnalysis ? 1 : 0) + (financialAnalysis ? 1 : 0);
+      const conflicts2 = false;
+      const intakeDocStats = {
+        pages: pages2,
+        sources: sources2,
+        conflicts: conflicts2,
+      };
+
+      const intakeModel = chooseModel({
+        phase: "intake",
+        docStats: intakeDocStats,
+        userFlags: {
+          costMode: (process.env.COST_MODE || "false").toLowerCase() === "true",
+        },
+      });
+
+      const stepContextDetails = extractContextDetails(initialContext);
+
+      const MAX_GUARD_RETRIES = 2;
+      let aiMessage: string | undefined;
+      let violation: StepDisciplineViolation | null = null;
+      let guardrailNote = "";
+
+      for (let attempt = 0; attempt <= MAX_GUARD_RETRIES; attempt++) {
+        const systemPromptWithGuard = guardrailNote
+          ? `${systemPrompt}\n\n${guardrailNote}`
+          : systemPrompt;
+
+        try {
+          // Increase token limit for final question (step 5) and summary step (step 6)
+          const tokenLimit =
+            effectiveStep === 6 ? 800 : effectiveStep === 5 ? 600 : 300;
+
+          const res = await reliableChatCompletion({
+            messages: [
+              { role: "system", content: systemPromptWithGuard },
+              ...messages,
+            ],
+            model: intakeModel,
+            temperature: 0.3,
+            top_p: 0.9,
+            max_tokens: tokenLimit,
+          });
+          aiMessage = res.content;
+        } catch (nimError: any) {
+          console.error("NIM chat error:", nimError);
+
+          if (nimError.status === 404) {
+            console.log(
+              `Model ${intakeModel} not found, trying fallback to default model`
+            );
+            try {
+              const fallbackModel =
+                process.env.LLM_DEFAULT_MODEL ||
+                "nvidia/llama-3.1-nemotron-70b-instruct";
+              const fallbackTokenLimit =
+                effectiveStep === 6 ? 800 : effectiveStep === 5 ? 600 : 300;
+              const res = await chatCompletion({
+                messages: [
+                  { role: "system", content: systemPromptWithGuard },
+                  ...messages,
+                ],
+                model: fallbackModel,
+                temperature: 0.3,
+                top_p: 0.9,
+                max_tokens: fallbackTokenLimit,
+              });
+              aiMessage = res.content;
+              console.log(`Successfully used fallback model: ${fallbackModel}`);
+            } catch (fallbackError: any) {
+              console.error("Fallback model also failed:", fallbackError);
+              throw fallbackError;
+            }
+          } else if (nimError.retryable) {
+            const fallbackMessage = `I'm experiencing some technical difficulties with our AI service right now. The system is temporarily unavailable, but I can still help you with basic questions.
+
+Could you please try again in a moment? The issue should resolve itself shortly.`;
+
+            // Save user message to database
+            const lastUserMessage = messages[messages.length - 1];
+            if (lastUserMessage && lastUserMessage.role === "user") {
+              await db.saveMessage(
+                lastUserMessage.role,
+                lastUserMessage.content,
+                {
+                  stepNumber: effectiveStep,
+                }
+              );
+            }
+
+            // Save assistant fallback response to database
+            await db.saveMessage("assistant", fallbackMessage, {
+              stepNumber: effectiveStep,
+              modelUsed: "fallback",
+            });
+
+            return NextResponse.json({
+              message: fallbackMessage,
+              fallback: true,
+              contextSummary: null,
+            });
+          } else {
+            throw nimError;
+          }
+        }
+
+        if (!aiMessage) {
+          throw new Error("No response from NVIDIA API");
+        }
+
+        violation = detectStepViolation(effectiveStep, aiMessage);
+        if (!violation) {
+          break;
+        }
+
+        console.warn(
+          `Guardrail triggered for step ${effectiveStep} (attempt ${
+            attempt + 1
+          }): ${violation}`
+        );
+        guardrailNote = buildGuardrailReminder(effectiveStep, violation);
+        aiMessage = undefined;
+      }
+
       if (!aiMessage) {
-        throw new Error("No response from NVIDIA API");
+        console.warn(
+          `Guardrail fallback engaged for step ${effectiveStep}; using templated prompt.`
+        );
+        aiMessage = buildFallbackMessage(effectiveStep, stepContextDetails);
       }
 
-      violation = detectStepViolation(effectiveStep, aiMessage);
-      if (!violation) {
-        break;
+      // Save user message to database
+      const lastUserMessage = messages[messages.length - 1];
+      if (lastUserMessage && lastUserMessage.role === "user") {
+        await db.saveMessage(lastUserMessage.role, lastUserMessage.content, {
+          stepNumber: effectiveStep,
+        });
       }
 
-      console.warn(
-        `Guardrail triggered for step ${effectiveStep} (attempt ${
-          attempt + 1
-        }): ${violation}`
+      // Save assistant response to database
+      await db.saveMessage("assistant", aiMessage, {
+        stepNumber: effectiveStep,
+        modelUsed: intakeModel,
+      });
+
+      // Update conversation context
+      await db.updateContext({
+        contextSummary: initialContext,
+        websiteAnalysis,
+        financialAnalysis,
+      });
+
+      // Generate context summary after getting the response
+      const updatedMessages = [
+        ...messages,
+        { role: "assistant", content: aiMessage },
+      ];
+      const contextSummary = await generateContextSummary(updatedMessages, {
+        initialContext,
+        websiteAnalysis,
+        financialAnalysis,
+      });
+
+      const filtered = filterOutput(aiMessage);
+      return NextResponse.json({
+        message: filtered.text,
+        contextSummary: contextSummary,
+      });
+    } catch (error) {
+      console.error("Chat API error:", error);
+
+      // Log system health for debugging
+      await db.logSystemHealth({
+        service: "chat_api",
+        endpoint: "/api/chat",
+        method: "POST",
+        success: false,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorType: "api_error",
+      });
+
+      // Context-aware fallback question using any available analyses
+      const ctx = initialContext || {};
+      const step = currentStep || 1;
+      const fallbackMessage = buildFallbackMessage(
+        Math.min(step, 6),
+        extractContextDetails(ctx)
       );
-      guardrailNote = buildGuardrailReminder(effectiveStep, violation);
-      aiMessage = undefined;
+
+      // Save user message to database
+      const lastUserMessage = messages[messages.length - 1];
+      if (lastUserMessage && lastUserMessage.role === "user") {
+        await db.saveMessage(lastUserMessage.role, lastUserMessage.content, {
+          stepNumber: step,
+        });
+      }
+
+      // Save assistant fallback response to database
+      await db.saveMessage("assistant", fallbackMessage, {
+        stepNumber: step,
+        modelUsed: "fallback",
+      });
+
+      return NextResponse.json({
+        message: fallbackMessage,
+        fallback: true,
+        contextSummary: ctx || null,
+      });
     }
-
-    if (!aiMessage) {
-      console.warn(
-        `Guardrail fallback engaged for step ${effectiveStep}; using templated prompt.`
-      );
-      aiMessage = buildFallbackMessage(effectiveStep, stepContextDetails);
-    }
-
-    // Generate context summary after getting the response
-    const updatedMessages = [
-      ...messages,
-      { role: "assistant", content: aiMessage },
-    ];
-    const contextSummary = await generateContextSummary(updatedMessages, {
-      initialContext,
-      websiteAnalysis,
-      financialAnalysis,
-    });
-
-    const filtered = filterOutput(aiMessage);
-    return NextResponse.json({
-      message: filtered.text,
-      contextSummary: contextSummary,
-    });
-  } catch (error) {
-    console.error("Chat API error:", error);
-
-    // Context-aware fallback question using any available analyses
-    const ctx = initialContext || {};
-    const step = currentStep || 1;
-    const fallbackMessage = buildFallbackMessage(
-      Math.min(step, 6),
-      extractContextDetails(ctx)
-    );
-
-    return NextResponse.json({
-      message: fallbackMessage,
-      fallback: true,
-      contextSummary: ctx || null,
-    });
-  }
+  });
 }

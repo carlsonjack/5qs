@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   Moon,
@@ -20,51 +21,64 @@ import { ChatInput } from "./chat-input";
 import { BusinessProfile } from "./business-profile";
 import { ContextGathering } from "./context-gathering";
 import { BusinessPlanViewer } from "./business-plan-viewer";
+import { getProfile } from "@/lib/profiles";
 import Image from "next/image";
 
 // Motivational messages that rotate randomly for each session
-const MOTIVATIONAL_MESSAGES = [
-  "You've got this.",
-  "Smarter than the consultants.",
-  "Complexity? Crushed.",
-  "Strategy made simple.",
-  "The answers are in you already.",
-  "No MBA required.",
-  "Business genius, unlocked.",
-  "Strategy in plain English.",
-  "Smarts > Jargon.",
-  "Your gut is right.",
-  "This won't hurt a bit.",
-  "Less noise, more clarity.",
-  "You think clearer than you know.",
-  "Faster than a boardroom.",
-  "You're sharper than you give yourself credit for.",
-  "Big brains, no buzzwords.",
-  "Simplicity wins.",
-  "You already know more than you think.",
-  "Insight is your superpower.",
-  "Straight talk, smart answers.",
-  "This is easier than it looks.",
-  "You don't need the fluff.",
-  "Five minutes to clarity.",
-  "Brainstorm > Brain drain.",
-  "You're better at this than they are.",
-  "We cut the nonsense.",
-  "Business sense, distilled.",
-  "Sharp takes only.",
-  "Smart, simple, done.",
-  "You know the answers.",
-  "We just make them obvious.",
-  "Cut through the fog.",
-  "It's not rocket science.",
-  "Outsmart the overthinkers.",
-  "Trust your instincts.",
-  "You're a strategist now.",
-  "No BS, just clarity.",
-  "Strategy without the suit.",
-  "You're the smartest person in the room.",
-  "Turns out, you knew it all along.",
-];
+const MOTIVATIONAL_MESSAGES = {
+  "ai-smb": [
+    "You've got this.",
+    "Smarter than the consultants.",
+    "Complexity? Crushed.",
+    "Strategy made simple.",
+    "The answers are in you already.",
+    "No MBA required.",
+    "Business genius, unlocked.",
+    "Strategy in plain English.",
+    "Smarts > Jargon.",
+    "Your gut is right.",
+    "This won't hurt a bit.",
+    "Less noise, more clarity.",
+    "You think clearer than you know.",
+    "Faster than a boardroom.",
+    "You're sharper than you give yourself credit for.",
+    "Big brains, no buzzwords.",
+    "Simplicity wins.",
+    "You already know more than you think.",
+    "Insight is your superpower.",
+    "Straight talk, smart answers.",
+    "This is easier than it looks.",
+    "You don't need the fluff.",
+    "Five minutes to clarity.",
+    "Brainstorm > Brain drain.",
+  ],
+  "fitness-coach": [
+    "You've got this.",
+    "Stronger than you think.",
+    "Progress over perfection.",
+    "Every rep counts.",
+    "Your body is capable.",
+    "Consistency is key.",
+    "You're worth the effort.",
+    "Small steps, big changes.",
+    "Trust the process.",
+    "You're stronger than yesterday.",
+    "This is your journey.",
+    "Every workout matters.",
+    "You're building something amazing.",
+    "Fitness is a lifestyle.",
+    "You've got the power.",
+    "One day at a time.",
+    "Your health is your wealth.",
+    "You're doing great.",
+    "Keep pushing forward.",
+    "You're worth the investment.",
+    "Every choice counts.",
+    "You're building strength.",
+    "This is your time.",
+    "You're becoming unstoppable.",
+  ],
+};
 
 // Industry fun facts for different business types
 const INDUSTRY_FUN_FACTS: Record<string, string[]> = {
@@ -241,6 +255,10 @@ interface ContextSummary {
 }
 
 export function ChatInterface() {
+  const searchParams = useSearchParams();
+  const variant = searchParams.get("v");
+  const profile = getProfile(variant);
+
   const { isHydrated, saveState, getState, clearState } = useChatPersistence();
 
   const [messages, setMessages] = useState<Message[]>([]);
@@ -266,12 +284,19 @@ export function ChatInterface() {
   const { toast } = useToast();
 
   // Select a random motivational message for each session
-  const [motivationalMessage, setMotivationalMessage] = useState(
-    () =>
-      MOTIVATIONAL_MESSAGES[
-        Math.floor(Math.random() * MOTIVATIONAL_MESSAGES.length)
-      ]
-  );
+  const [motivationalMessage, setMotivationalMessage] = useState(() => {
+    const messages =
+      MOTIVATIONAL_MESSAGES[variant as keyof typeof MOTIVATIONAL_MESSAGES] ||
+      MOTIVATIONAL_MESSAGES["ai-smb"];
+    return messages[Math.floor(Math.random() * messages.length)];
+  });
+
+  // Reset chat when variant changes
+  useEffect(() => {
+    if (isHydrated) {
+      resetChat();
+    }
+  }, [variant]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -462,6 +487,7 @@ export function ChatInterface() {
             },
           ],
           currentStep: 1,
+          variant: variant,
           initialContext: initialContext,
           websiteAnalysis,
           financialAnalysis,
@@ -531,6 +557,7 @@ export function ChatInterface() {
         body: JSON.stringify({
           messages: chatMessages,
           currentStep: 7, // Step past summary to trigger plan generation
+          variant: variant,
           initialContext: contextSummary,
           websiteAnalysis,
           financialAnalysis,
@@ -547,9 +574,14 @@ export function ChatInterface() {
         setBusinessPlanMarkdown(data.businessPlanMarkdown);
         setCanGeneratePlan(false);
         toast({
-          title: "Business Plan Generated! 🎉",
+          title:
+            variant === "fitness-coach"
+              ? "Fitness Plan Generated! 🎉"
+              : "Business Plan Generated! 🎉",
           description:
-            "Your personalized business plan is ready to view, copy, and download.",
+            variant === "fitness-coach"
+              ? "Your personalized fitness plan is ready to view, copy, and download."
+              : "Your personalized business plan is ready to view, copy, and download.",
         });
       } else {
         // Fallback: If no plan returned, try to extract from message
@@ -557,9 +589,14 @@ export function ChatInterface() {
           setBusinessPlanMarkdown(data.message);
           setCanGeneratePlan(false);
           toast({
-            title: "Business Plan Generated! 🎉",
+            title:
+              variant === "fitness-coach"
+                ? "Fitness Plan Generated! 🎉"
+                : "Business Plan Generated! 🎉",
             description:
-              "Your personalized business plan is ready to view, copy, and download.",
+              variant === "fitness-coach"
+                ? "Your personalized fitness plan is ready to view, copy, and download."
+                : "Your personalized business plan is ready to view, copy, and download.",
           });
         } else {
           throw new Error("No business plan received from API");
@@ -579,8 +616,63 @@ export function ChatInterface() {
     }
   };
 
-  const handleSendMessage = async (content: string) => {
-    addMessage(content, true);
+  const handleSendMessage = async (content: string, files?: File[]) => {
+    // Process files if provided
+    let messageContent = content;
+    let fileContents: Array<{ name: string; content: string }> = [];
+
+    if (files && files.length > 0) {
+      const fileNames = files.map((f) => f.name).join(", ");
+      messageContent = content
+        ? `${content}\n\n📎 Attached files: ${fileNames}`
+        : `📎 Attached files: ${fileNames}`;
+
+      toast({
+        title: "Processing files...",
+        description: `Extracting content from ${files.length} file(s).`,
+      });
+
+      // Extract text from each file
+      for (const file of files) {
+        try {
+          const formData = new FormData();
+          formData.append("file", file);
+
+          const response = await fetch("/api/analyze/financials", {
+            method: "POST",
+            body: formData,
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            // Extract the raw text content from the analysis
+            const extractedText = data.rawText || data.analysis || "";
+            if (extractedText) {
+              fileContents.push({
+                name: file.name,
+                content: extractedText.substring(0, 5000), // Limit to 5000 chars per file
+              });
+            }
+          }
+        } catch (error) {
+          console.error(`Error processing file ${file.name}:`, error);
+          toast({
+            title: "File processing error",
+            description: `Could not process ${file.name}`,
+            variant: "destructive",
+          });
+        }
+      }
+
+      if (fileContents.length > 0) {
+        toast({
+          title: "Files processed",
+          description: `Successfully extracted content from ${fileContents.length} file(s).`,
+        });
+      }
+    }
+
+    addMessage(messageContent, true);
     setIsLoading(true);
 
     // ✅ Check if this is the 5th user message (end of step 5)
@@ -600,7 +692,7 @@ export function ChatInterface() {
         content: msg.content,
       }));
 
-      chatMessages.push({ role: "user", content });
+      chatMessages.push({ role: "user", content: messageContent });
 
       const response = await fetch("/api/chat", {
         method: "POST",
@@ -608,9 +700,11 @@ export function ChatInterface() {
         body: JSON.stringify({
           messages: chatMessages,
           currentStep: currentStep,
+          variant: variant,
           initialContext: contextSummary,
           websiteAnalysis,
           financialAnalysis,
+          attachedFiles: fileContents.length > 0 ? fileContents : undefined,
         }),
       });
 
@@ -634,9 +728,14 @@ export function ChatInterface() {
           setReadyToGeneratePlan(false);
           setCanGeneratePlan(false);
           toast({
-            title: "Business Plan Generated! 🎉",
+            title:
+              variant === "fitness-coach"
+                ? "Fitness Plan Generated! 🎉"
+                : "Business Plan Generated! 🎉",
             description:
-              "Your personalized business plan is ready to view, copy, and download.",
+              variant === "fitness-coach"
+                ? "Your personalized fitness plan is ready to view, copy, and download."
+                : "Your personalized business plan is ready to view, copy, and download.",
           });
         } else if (currentStep < 6) {
           // ✅ Only increment step if we're not at step 6 yet
@@ -669,7 +768,11 @@ export function ChatInterface() {
       // ✅ If business plan generation failed, provide a fallback
       if (isFinalQuestion) {
         console.log("❌ Business plan generation failed, using fallback");
-        setBusinessPlanMarkdown(`# 🚀 Your Business Plan
+        setBusinessPlanMarkdown(`# ${
+          variant === "fitness-coach"
+            ? "💪 Your Fitness Plan"
+            : "🚀 Your Business Plan"
+        }
 
 *Note: We encountered a technical issue generating your custom plan. Please try restarting the conversation for a fully personalized plan.*
 
@@ -723,10 +826,11 @@ Based on our conversation, your business has significant opportunities for growt
     setReadyToGeneratePlan(false);
     setCanGeneratePlan(false);
     // Select a new random motivational message for the fresh session
+    const messages =
+      MOTIVATIONAL_MESSAGES[variant as keyof typeof MOTIVATIONAL_MESSAGES] ||
+      MOTIVATIONAL_MESSAGES["ai-smb"];
     setMotivationalMessage(
-      MOTIVATIONAL_MESSAGES[
-        Math.floor(Math.random() * MOTIVATIONAL_MESSAGES.length)
-      ]
+      messages[Math.floor(Math.random() * messages.length)]
     );
     clearState(); // Clear localStorage
   };
@@ -809,14 +913,22 @@ Based on our conversation, your business has significant opportunities for growt
             <div>
               <h2 className="font-semibold">
                 {businessPlanMarkdown
-                  ? "Your Business Plan"
+                  ? variant === "fitness-coach"
+                    ? "Your Fitness Plan"
+                    : "Your Business Plan"
+                  : variant === "fitness-coach"
+                  ? "Fitness Discovery Chat"
                   : "Business Discovery Chat"}
               </h2>
               <p className="text-sm text-muted-foreground">
                 {businessPlanMarkdown
-                  ? "We turned 5 questions into a full-blown AI plan. You're welcome."
+                  ? variant === "fitness-coach"
+                    ? "We turned 5 questions into a personalized fitness plan. You're welcome."
+                    : "We turned 5 questions into a full-blown AI plan. You're welcome."
                   : isStarted
                   ? `Step ${currentStep} of 6 • ${motivationalMessage}`
+                  : variant === "fitness-coach"
+                  ? "We turn 5 questions into a personalized fitness plan. You're welcome."
                   : "We turn 5 questions into a full-blown AI plan. You're welcome."}
               </p>
             </div>
@@ -890,6 +1002,7 @@ Based on our conversation, your business has significant opportunities for growt
             </div>
           ) : showContextGathering && !isContextGatheringComplete ? (
             <ContextGathering
+              variant={variant}
               onComplete={handleContextGatheringComplete}
               onSkip={handleContextGatheringSkip}
               onDataUpdate={(data) => {

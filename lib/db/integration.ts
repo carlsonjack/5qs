@@ -26,9 +26,12 @@ export class DatabaseIntegration {
   private user: any = null;
   private conversation: any = null;
 
+  private appVariant: string | null = null;
+
   constructor(request: NextRequest) {
     this.request = request;
     this.sessionId = getOrCreateSessionId(request);
+    this.appVariant = request.nextUrl.searchParams.get("v");
   }
 
   // Initialize user and conversation
@@ -65,6 +68,7 @@ export class DatabaseIntegration {
           userId: this.user.id,
           sessionId: this.sessionId,
           status: "active",
+          appVariant: this.appVariant || undefined,
         });
       }
 
@@ -72,6 +76,7 @@ export class DatabaseIntegration {
         user: this.user,
         conversation: this.conversation,
         sessionId: this.sessionId,
+        appVariant: this.appVariant,
       };
     } catch (error) {
       console.error("Error initializing database integration:", error);
@@ -222,17 +227,26 @@ export class DatabaseIntegration {
     geography?: string;
     score?: number;
     leadSignals?: any;
+    ipAddress?: string;
+    appVariant?: string;
   }) {
     if (!this.conversation) {
       throw new Error("Conversation not initialized");
     }
 
     try {
+      const ipFromHeaders =
+        this.request.headers.get("x-forwarded-for")?.split(",")[0] ||
+        this.request.headers.get("x-real-ip") ||
+        undefined;
+
       const lead = await leadService.findOrCreate({
         userId: this.user?.id,
         conversationId: this.conversation.id,
         businessPlanId: null, // Will be updated when business plan is created
         ...leadData,
+        ipAddress: leadData.ipAddress || ipFromHeaders,
+        appVariant: leadData.appVariant || this.appVariant || undefined,
       });
 
       return lead;

@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import jsPDF from "jspdf";
+import { withDatabaseIntegration } from "@/lib/db/integration";
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const FORWARD_EMAIL = "carlsonjack455@gmail.com";
@@ -515,143 +516,221 @@ Contact: ${email}
 }
 
 export async function POST(req: NextRequest) {
-  try {
-    const {
-      email,
-      firstName,
-      lastName,
-      businessPlan,
-      contextSummary,
-      userInfo,
-      chatMessages,
-    } = await req.json();
+  return withDatabaseIntegration(req, async (db) => {
+    try {
+      const {
+        email,
+        firstName,
+        lastName,
+        businessPlan,
+        contextSummary,
+        userInfo,
+        chatMessages,
+      } = await req.json();
 
-    if (!email || !firstName || !lastName || !businessPlan) {
+      if (!email || !firstName || !lastName || !businessPlan) {
+        return NextResponse.json(
+          {
+            error:
+              "Email, first name, last name, and business plan are required",
+          },
+          { status: 400 }
+        );
+      }
+
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return NextResponse.json(
+          { error: "Invalid email format" },
+          { status: 400 }
+        );
+      }
+
+      // Validate business plan content length and structure
+      if (!businessPlan || businessPlan.trim().length === 0) {
+        return NextResponse.json(
+          { error: "Business plan content is empty" },
+          { status: 400 }
+        );
+      }
+
+      console.log("Business plan length:", businessPlan.length, "characters");
+
+      // Track email sending event
+      await db.trackEvent("email", "plan_send_request", {
+        email: email,
+        firstName: firstName,
+        lastName: lastName,
+        planLength: businessPlan.length,
+        hasContextSummary: !!contextSummary,
+        hasUserInfo: !!userInfo,
+        hasChatMessages: !!(chatMessages && chatMessages.length > 0),
+      });
+
+      const emailData: EmailData = {
+        email,
+        firstName,
+        lastName,
+        businessPlan,
+        contextSummary,
+        userInfo,
+        chatMessages,
+      };
+
+      // Send business plan to user
+      try {
+        console.log("Generating user email...");
+        const userEmail = generateBusinessPlanEmail(emailData);
+
+        // Generate PDF attachment for user
+        console.log("Generating PDF attachment for user...");
+        const pdfContent = generateBusinessPlanPDF(businessPlan, email);
+        const userAttachments = pdfContent
+          ? [
+              {
+                filename: `business-plan-${firstName}-${lastName}-${
+                  new Date().toISOString().split("T")[0]
+                }.pdf`,
+                content: pdfContent,
+                type: "application/pdf",
+              },
+            ]
+          : undefined;
+
+        console.log("Sending business plan to user:", email);
+        const userEmailResult = await sendEmail(
+          email,
+          "Your AI Implementation Plan - 5Q Strategy",
+          userEmail.html,
+          userEmail.text,
+          userAttachments
+        );
+        console.log("User email sent successfully");
+
+        // Log email event for user
+        await db.logEmailEvent({
+          toEmail: email,
+          fromEmail: "5Q Strategy <jack@5qstrategy.com>",
+          subject: "Your AI Implementation Plan - 5Q Strategy",
+          emailType: "business_plan",
+          messageId: userEmailResult.id,
+          status: "sent",
+          provider: "resend",
+        });
+      } catch (error) {
+        console.error("Failed to send user email:", error);
+
+        // Log failed email event
+        await db.logEmailEvent({
+          toEmail: email,
+          fromEmail: "5Q Strategy <jack@5qstrategy.com>",
+          subject: "Your AI Implementation Plan - 5Q Strategy",
+          emailType: "business_plan",
+          status: "failed",
+          provider: "resend",
+          errorMessage: error instanceof Error ? error.message : String(error),
+        });
+
+        throw new Error(
+          `Failed to send business plan to user: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      }
+
+      // Send lead notification to forward email
+      try {
+        console.log("Generating lead notification email...");
+        const leadEmail = generateLeadNotificationEmail(emailData);
+
+        // Generate PDF attachment
+        console.log("Generating PDF attachment...");
+        const pdfContent = generateBusinessPlanPDF(businessPlan, email);
+        const attachments = pdfContent
+          ? [
+              {
+                filename: `business-plan-${email.split("@")[0]}-${
+                  new Date().toISOString().split("T")[0]
+                }.pdf`,
+                content: pdfContent,
+                type: "application/pdf",
+              },
+            ]
+          : undefined;
+
+        console.log("Sending lead notification to:", FORWARD_EMAIL);
+        const leadEmailResult = await sendEmail(
+          FORWARD_EMAIL,
+          `New Lead: ${email} - AI Business Plan`,
+          leadEmail.html,
+          leadEmail.text,
+          attachments
+        );
+        console.log("Lead notification sent successfully");
+
+        // Log email event for lead notification
+        await db.logEmailEvent({
+          toEmail: FORWARD_EMAIL,
+          fromEmail: "5Q Strategy <jack@5qstrategy.com>",
+          subject: `New Lead: ${email} - AI Business Plan`,
+          emailType: "lead_notification",
+          messageId: leadEmailResult.id,
+          status: "sent",
+          provider: "resend",
+        });
+      } catch (error) {
+        console.error("Failed to send lead notification:", error);
+
+        // Log failed lead notification email event
+        await db.logEmailEvent({
+          toEmail: FORWARD_EMAIL,
+          fromEmail: "5Q Strategy <jack@5qstrategy.com>",
+          subject: `New Lead: ${email} - AI Business Plan`,
+          emailType: "lead_notification",
+          status: "failed",
+          provider: "resend",
+          errorMessage: error instanceof Error ? error.message : String(error),
+        });
+
+        // Don't throw here - user email was successful, so we can continue
+        console.log("Continuing despite lead notification failure");
+      }
+
+      console.log("Email sending process completed");
+
+      // Track successful email completion
+      await db.trackEvent("email", "plan_send_completed", {
+        email: email,
+        firstName: firstName,
+        lastName: lastName,
+        planLength: businessPlan.length,
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: "Business plan sent successfully",
+      });
+    } catch (error) {
+      console.error("Error sending business plan:", error);
+
+      // Log system health for debugging
+      await db.logSystemHealth({
+        service: "send_plan_api",
+        endpoint: "/api/send-plan",
+        method: "POST",
+        success: false,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorType: "api_error",
+      });
+
       return NextResponse.json(
         {
-          error: "Email, first name, last name, and business plan are required",
+          error: "Failed to send business plan",
+          details: error instanceof Error ? error.message : "Unknown error",
         },
-        { status: 400 }
+        { status: 500 }
       );
     }
-
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return NextResponse.json(
-        { error: "Invalid email format" },
-        { status: 400 }
-      );
-    }
-
-    // Validate business plan content length and structure
-    if (!businessPlan || businessPlan.trim().length === 0) {
-      return NextResponse.json(
-        { error: "Business plan content is empty" },
-        { status: 400 }
-      );
-    }
-
-    console.log("Business plan length:", businessPlan.length, "characters");
-
-    const emailData: EmailData = {
-      email,
-      firstName,
-      lastName,
-      businessPlan,
-      contextSummary,
-      userInfo,
-      chatMessages,
-    };
-
-    // Send business plan to user
-    try {
-      console.log("Generating user email...");
-      const userEmail = generateBusinessPlanEmail(emailData);
-
-      // Generate PDF attachment for user
-      console.log("Generating PDF attachment for user...");
-      const pdfContent = generateBusinessPlanPDF(businessPlan, email);
-      const userAttachments = pdfContent
-        ? [
-            {
-              filename: `business-plan-${firstName}-${lastName}-${
-                new Date().toISOString().split("T")[0]
-              }.pdf`,
-              content: pdfContent,
-              type: "application/pdf",
-            },
-          ]
-        : undefined;
-
-      console.log("Sending business plan to user:", email);
-      await sendEmail(
-        email,
-        "Your AI Implementation Plan - 5Q Strategy",
-        userEmail.html,
-        userEmail.text,
-        userAttachments
-      );
-      console.log("User email sent successfully");
-    } catch (error) {
-      console.error("Failed to send user email:", error);
-      throw new Error(
-        `Failed to send business plan to user: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
-    }
-
-    // Send lead notification to forward email
-    try {
-      console.log("Generating lead notification email...");
-      const leadEmail = generateLeadNotificationEmail(emailData);
-
-      // Generate PDF attachment
-      console.log("Generating PDF attachment...");
-      const pdfContent = generateBusinessPlanPDF(businessPlan, email);
-      const attachments = pdfContent
-        ? [
-            {
-              filename: `business-plan-${email.split("@")[0]}-${
-                new Date().toISOString().split("T")[0]
-              }.pdf`,
-              content: pdfContent,
-              type: "application/pdf",
-            },
-          ]
-        : undefined;
-
-      console.log("Sending lead notification to:", FORWARD_EMAIL);
-      await sendEmail(
-        FORWARD_EMAIL,
-        `New Lead: ${email} - AI Business Plan`,
-        leadEmail.html,
-        leadEmail.text,
-        attachments
-      );
-      console.log("Lead notification sent successfully");
-    } catch (error) {
-      console.error("Failed to send lead notification:", error);
-      // Don't throw here - user email was successful, so we can continue
-      console.log("Continuing despite lead notification failure");
-    }
-
-    console.log("Email sending process completed");
-
-    return NextResponse.json({
-      success: true,
-      message: "Business plan sent successfully",
-    });
-  } catch (error) {
-    console.error("Error sending business plan:", error);
-
-    return NextResponse.json(
-      {
-        error: "Failed to send business plan",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 }
-    );
-  }
+  });
 }

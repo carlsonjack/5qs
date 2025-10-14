@@ -8,6 +8,13 @@
       "when": 1758908718767,
       "tag": "0000_flowery_korvac",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1760452469381,
+      "tag": "0001_rare_adam_destine",
+      "breakpoints": true
     }
   ]
 }
