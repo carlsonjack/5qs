@@ -3,30 +3,39 @@ import { cookies } from "next/headers";
 import { NextRequest } from "next/server";
 
 export async function createClient() {
-  const cookieStore = await cookies();
+  try {
+    const cookieStore = await cookies();
 
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
+    return createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            try {
+              return cookieStore.getAll();
+            } catch {
+              return [];
+            }
+          },
+          setAll(cookiesToSet) {
+            try {
+              cookiesToSet.forEach(({ name, value, options }) =>
+                cookieStore.set(name, value, options)
+              );
+            } catch {
+              // The `setAll` method was called from a Server Component.
+              // This can be ignored if you have middleware refreshing
+              // user sessions.
+            }
+          },
         },
-        setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            );
-          } catch {
-            // The `setAll` method was called from a Server Component.
-            // This can be ignored if you have middleware refreshing
-            // user sessions.
-          }
-        },
-      },
-    }
-  );
+      }
+    );
+  } catch (error) {
+    console.log("Failed to create Supabase client, continuing without auth");
+    return null;
+  }
 }
 
 export function createClientFromRequest(request: NextRequest) {
@@ -51,6 +60,11 @@ export function createClientFromRequest(request: NextRequest) {
 export async function getUser() {
   try {
     const supabase = await createClient();
+    if (!supabase) {
+      console.log("Supabase client not available, continuing without user");
+      return null;
+    }
+
     const {
       data: { user },
       error,
@@ -72,6 +86,11 @@ export async function getUser() {
 export async function getSession() {
   try {
     const supabase = await createClient();
+    if (!supabase) {
+      console.log("Supabase client not available, continuing without session");
+      return null;
+    }
+
     const {
       data: { session },
       error,

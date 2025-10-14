@@ -421,18 +421,42 @@ Conversation to analyze:`;
         console.error("Raw content:", content.substring(0, 500));
 
         // Try to repair the JSON by extracting the first valid JSON object
-        const jsonMatch = content.match(/\{.*\}/);
+        const jsonMatch = content.match(/\{.*\}/s);
         if (jsonMatch) {
           try {
             json = JSON.parse(jsonMatch[0]);
             console.log("Successfully repaired JSON from malformed response");
           } catch (repairError) {
             console.error("JSON repair failed:", repairError);
-            const errorMessage =
-              parseError instanceof Error
-                ? parseError.message
-                : String(parseError);
-            throw new Error(`Invalid JSON: ${errorMessage}`);
+
+            // Try to fix incomplete JSON by adding missing closing braces
+            let repairedJson = jsonMatch[0];
+            const openBraces = (repairedJson.match(/\{/g) || []).length;
+            const closeBraces = (repairedJson.match(/\}/g) || []).length;
+            const missingBraces = openBraces - closeBraces;
+
+            if (missingBraces > 0) {
+              repairedJson += "}".repeat(missingBraces);
+              try {
+                json = JSON.parse(repairedJson);
+                console.log(
+                  "Successfully repaired JSON by adding missing braces"
+                );
+              } catch (finalError) {
+                console.error("Final JSON repair failed:", finalError);
+                const errorMessage =
+                  parseError instanceof Error
+                    ? parseError.message
+                    : String(parseError);
+                throw new Error(`Invalid JSON: ${errorMessage}`);
+              }
+            } else {
+              const errorMessage =
+                parseError instanceof Error
+                  ? parseError.message
+                  : String(parseError);
+              throw new Error(`Invalid JSON: ${errorMessage}`);
+            }
           }
         } else {
           const errorMessage =
