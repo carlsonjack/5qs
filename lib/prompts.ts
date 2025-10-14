@@ -1,6 +1,4 @@
-export const discoverySystemPrompt = (
-  currentStep: number
-): string => {
+export const discoverySystemPrompt = (currentStep: number): string => {
   const isSummaryStep = currentStep >= 6;
   const questionNumber = Math.min(currentStep, 5);
   const stepLine = isSummaryStep
@@ -80,10 +78,12 @@ IMPORTANT:
 - Use "Not yet specified" for any missing information
 
 Pay special attention to extracting:
-- Tech stack: What software, tools, or systems they use
-- Marketing strengths: What marketing channels or strategies work well for them
-- Customer segment: Who their target customers are
-- Data available: What data sources or analytics they have access to
+- businessType: What type of business they operate (e.g., "Retail coffee shop", "E-commerce platform", "Service-based business")
+- painPoints: Current challenges or problems they face
+- goals: What they want to achieve or improve
+- dataAvailable: What data sources or analytics they have access to
+- priorTechUse: What software, tools, or systems they currently use
+- growthIntent: Their plans for expansion or growth
 
 Conversation:
 ${conversationText}`;

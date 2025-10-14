@@ -260,32 +260,13 @@ export async function POST(req: NextRequest) {
         // Don't throw - let the website analysis continue
       }
 
-      // Send to NIM for deterministic JSON using guided_json
+      // Send to NIM for website analysis
       const systemPrompt =
-        "You are a business analyst. Analyze the following website content and extract key business data. Return only JSON.";
-
-      const guidedSchema = {
-        type: "object",
-        properties: {
-          productsServices: { type: "string" },
-          customerSegment: { type: "string" },
-          techStack: { type: "string" },
-          marketingStrengths: { type: "string" },
-          marketingWeaknesses: { type: "string" },
-        },
-        required: [
-          "productsServices",
-          "customerSegment",
-          "techStack",
-          "marketingStrengths",
-          "marketingWeaknesses",
-        ],
-        additionalProperties: false,
-      } as const;
+        'You are a business analyst. Analyze the following website content and extract key business data. Return only valid JSON with these exact fields: productsServices, customerSegment, techStack, marketingStrengths, marketingWeaknesses. Example: {"productsServices": "description", "customerSegment": "description", "techStack": "description", "marketingStrengths": "description", "marketingWeaknesses": "description"}';
 
       let analysisResponse: string | null = null;
       try {
-        console.log("Using NIM guided_json for website analysis...");
+        console.log("Using NIM for website analysis...");
         const res = await chatCompletion({
           messages: [
             { role: "system", content: systemPrompt },
@@ -300,11 +281,10 @@ export async function POST(req: NextRequest) {
           temperature: 0.1,
           top_p: 0.9,
           max_tokens: 400,
-          nvext: { guided_json: guidedSchema as any },
         });
         analysisResponse = res.content;
       } catch (nimError) {
-        console.error("NIM guided_json failed:", nimError);
+        console.error("NIM analysis failed:", nimError);
         analysisResponse = null;
       }
 
