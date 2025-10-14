@@ -365,7 +365,7 @@ export async function reliableChatCompletion(
     );
   }
 
-  let lastError: Error | null = null;
+  const errors: Array<{ provider: string; error: string }> = [];
 
   // Try each provider in order
   for (const [providerId, provider] of availableProviders) {
@@ -400,16 +400,17 @@ export async function reliableChatCompletion(
 
       return result;
     } catch (error: any) {
-      lastError = error;
-      console.warn(`❌ ${provider.name} failed:`, error.message);
+      const errorMessage = error.message || "Unknown error";
+      errors.push({ provider: provider.name, error: errorMessage });
+      console.warn(`❌ ${provider.name} failed:`, errorMessage);
 
       // Mark provider as unhealthy if it's a non-retryable error
       if (error.status === 401 || error.status === 403) {
         provider.isAvailable = false;
-        provider.lastError = `Authentication error: ${error.message}`;
+        provider.lastError = `Authentication error: ${errorMessage}`;
       } else if (error.status >= 500) {
         provider.isAvailable = false;
-        provider.lastError = `Server error: ${error.message}`;
+        provider.lastError = `Server error: ${errorMessage}`;
       }
 
       // Continue to next provider
@@ -419,11 +420,10 @@ export async function reliableChatCompletion(
 
   // All providers failed
   console.error("🔴 All AI providers failed");
-  throw new Error(
-    `All AI providers failed. Last error: ${
-      lastError?.message || "Unknown error"
-    }`
-  );
+  const errorSummary = errors
+    .map((e) => `${e.provider}: ${e.error}`)
+    .join("; ");
+  throw new Error(`All AI providers failed. Errors: ${errorSummary}`);
 }
 
 export function getProviderStatus() {

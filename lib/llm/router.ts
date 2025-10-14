@@ -12,11 +12,11 @@ export interface UserFlags {
 
 const ENV = {
   DEFAULT:
-    process.env.LLM_DEFAULT_MODEL || "nvidia/llama-3.1-nemotron-70b-instruct",
+    process.env.LLM_DEFAULT_MODEL || "nvidia/llama-3.1-nemotron-ultra-253b-v1",
   PLAN: process.env.LLM_PLAN_MODEL || "nvidia/llama-3.1-nemotron-ultra-253b-v1",
   COST:
-    process.env.LLM_COST_MODE_MODEL || "nvidia/nemotron-4-340b-mini-instruct",
-  FAST: process.env.LLM_FAST_MODEL || "nvidia/nemotron-4-340b-mini-instruct",
+    process.env.LLM_COST_MODE_MODEL || "nvidia/llama-3.1-nemotron-nano-4b-v1.1",
+  FAST: process.env.LLM_FAST_MODEL || "nvidia/llama-3.1-nemotron-nano-4b-v1.1",
 };
 
 export function chooseModel({
