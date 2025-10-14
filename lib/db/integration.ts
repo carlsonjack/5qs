@@ -332,6 +332,7 @@ export class DatabaseIntegration {
     messageId?: string;
     status: string;
     provider?: string;
+    errorMessage?: string;
   }) {
     try {
       const event = await emailEventService.create(eventData);

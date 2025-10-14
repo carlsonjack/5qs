@@ -13,8 +13,8 @@ export function getSessionIdFromRequest(request: NextRequest): string | null {
   return request.cookies.get(SESSION_COOKIE_NAME)?.value || null;
 }
 
-export function getSessionIdFromCookies(): string | null {
-  const cookieStore = cookies();
+export async function getSessionIdFromCookies(): Promise<string | null> {
+  const cookieStore = await cookies();
   return cookieStore.get(SESSION_COOKIE_NAME)?.value || null;
 }
 
@@ -40,8 +40,8 @@ export function getOrCreateSessionId(request: NextRequest): string {
   return sessionId;
 }
 
-export function getOrCreateSessionIdFromCookies(): string {
-  let sessionId = getSessionIdFromCookies();
+export async function getOrCreateSessionIdFromCookies(): Promise<string> {
+  let sessionId = await getSessionIdFromCookies();
 
   if (!sessionId) {
     sessionId = generateSessionId();

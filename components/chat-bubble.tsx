@@ -125,7 +125,9 @@ export function ChatBubble({ message, isUser, timestamp }: ChatBubbleProps) {
       toast({
         title: "Text-to-Speech Not Available",
         description:
-          error.message || "Text-to-speech is not supported in this browser.",
+          error instanceof Error
+            ? error.message
+            : "Text-to-speech is not supported in this browser.",
         variant: "destructive",
         duration: 3000,
       });

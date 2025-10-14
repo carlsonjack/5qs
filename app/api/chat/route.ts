@@ -615,6 +615,7 @@ function cleanContextSummary(summary: any): any {
 async function generateBusinessPlan(
   messages: any[],
   contextSummary: ContextSummary | null,
+  planModel: string,
   options?: {
     initialContext?: any;
     websiteAnalysis?: any;
@@ -752,15 +753,6 @@ ${messages.map((msg) => `${msg.role}: ${msg.content}`).join("\n\n")}
 - If some information was "Not yet specified," assume minimal setup and suggest starting from scratch
 - Be thorough and focus on high-impact recommendations
 - Ensure proper markdown formatting with adequate spacing for readability`;
-
-    // Move planModel declaration outside try-catch to avoid scope issues
-    const planModel = chooseModel({
-      phase: "plan",
-      docStats: { pages: 0, sources: 0, conflicts: false },
-      userFlags: {
-        costMode: (process.env.COST_MODE || "false").toLowerCase() === "true",
-      },
-    });
 
     const userContent = `Context Summary JSON:\n${JSON.stringify(
       contextSummary,
@@ -1016,10 +1008,21 @@ export async function POST(req: NextRequest) {
             citations = research?.citations;
           }
 
+          // Choose model for business plan generation
+          const planModel = chooseModel({
+            phase: "plan",
+            docStats: { pages: 0, sources: 0, conflicts: false },
+            userFlags: {
+              costMode:
+                (process.env.COST_MODE || "false").toLowerCase() === "true",
+            },
+          });
+
           // Generate the business plan
           const businessPlanMarkdown = await generateBusinessPlan(
             messages,
             contextSummary || initialContext,
+            planModel,
             {
               initialContext,
               websiteAnalysis,
@@ -1032,6 +1035,41 @@ export async function POST(req: NextRequest) {
           );
 
           console.log("Business plan generation completed successfully");
+
+          // LeadSignals extraction (feature-flagged) - moved up to fix scope
+          const LEAD_SIGNALS_ENABLED =
+            (process.env.LEAD_SIGNALS_ENABLED || "true").toLowerCase() ===
+            "true";
+          let leadSignals: any = undefined;
+          if (LEAD_SIGNALS_ENABLED) {
+            try {
+              const conversationText = messages
+                .map((m: any) => `${m.role}: ${m.content}`)
+                .join("\n");
+              const ls = await extractLeadSignals({
+                conversationText,
+                contextSummaryJSON: JSON.stringify(contextSummary || {}),
+                websiteAnalysis:
+                  typeof websiteAnalysis === "object"
+                    ? JSON.stringify(websiteAnalysis)
+                    : String(websiteAnalysis || ""),
+                financialsAnalysis:
+                  typeof financialAnalysis === "object"
+                    ? JSON.stringify(financialAnalysis)
+                    : String(financialAnalysis || ""),
+              });
+              if (
+                ls &&
+                typeof ls === "object" &&
+                typeof ls.score === "number"
+              ) {
+                ls.score = computeLeadScore(ls);
+              }
+              leadSignals = ls;
+            } catch (e) {
+              console.warn("LeadSignals extraction failed:", e);
+            }
+          }
 
           // Save business plan to database
           const businessPlan = await db.saveBusinessPlan({
@@ -1080,57 +1118,6 @@ export async function POST(req: NextRequest) {
           // Return both the context summary and business plan
           const filtered = filterOutput(businessPlanMarkdown);
 
-          // LeadSignals extraction (feature-flagged)
-          const LEAD_SIGNALS_ENABLED =
-            (process.env.LEAD_SIGNALS_ENABLED || "true").toLowerCase() ===
-            "true";
-          let leadSignals: any = undefined;
-          if (LEAD_SIGNALS_ENABLED) {
-            try {
-              const conversationText = messages
-                .map((m: any) => `${m.role}: ${m.content}`)
-                .join("\n");
-              const ls = await extractLeadSignals({
-                conversationText,
-                contextSummaryJSON: JSON.stringify(contextSummary || {}),
-                websiteAnalysis:
-                  typeof websiteAnalysis === "object"
-                    ? JSON.stringify(websiteAnalysis)
-                    : String(websiteAnalysis || ""),
-                financialsAnalysis:
-                  typeof financialAnalysis === "object"
-                    ? JSON.stringify(financialAnalysis)
-                    : String(financialAnalysis || ""),
-                researchBrief: researchBrief || undefined,
-                docsCount: sources,
-                websiteFound: Boolean(websiteAnalysis),
-                researchCoverage: researchBrief
-                  ? Math.max(
-                      0,
-                      Math.min(
-                        100,
-                        researchBrief.length > 0
-                          ? citations?.length
-                            ? 60
-                            : 40
-                          : 0
-                      )
-                    )
-                  : 0,
-              });
-              // ensure score sanity
-              if (
-                typeof ls.score !== "number" ||
-                ls.score < 0 ||
-                ls.score > 100
-              ) {
-                ls.score = computeLeadScore(ls);
-              }
-              leadSignals = ls;
-            } catch (e) {
-              console.warn("LeadSignals extraction failed", e);
-            }
-          }
           return NextResponse.json({
             message:
               "Thank you for sharing all that information! I've prepared a customized business plan based on our conversation. You can review it below, copy it, or download it for your records.",

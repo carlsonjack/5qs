@@ -94,7 +94,8 @@ const EMBED_URL =
 const RERANK_URL =
   process.env.NVIDIA_RERANK_URL || "https://integrate.api.nvidia.com/v1/rerank";
 const TTS_URL =
-  process.env.NVIDIA_TTS_URL || "https://integrate.api.nvidia.com/v1/audio/speech";
+  process.env.NVIDIA_TTS_URL ||
+  "https://integrate.api.nvidia.com/v1/audio/speech";
 
 if (!NVIDIA_API_KEY) {
   // In serverless environments we still allow initialization; calls will fail fast.
@@ -154,7 +155,7 @@ async function doFetch(
       lastError = err;
 
       // Handle timeout specifically
-      if (err.name === "AbortError") {
+      if (err instanceof Error && err.name === "AbortError") {
         console.error(
           `Request timeout after 30 seconds (attempt ${attempt + 1})`
         );

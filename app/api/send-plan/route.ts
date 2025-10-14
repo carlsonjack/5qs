@@ -216,7 +216,7 @@ function generateBusinessPlanEmail(data: EmailData) {
           '<li style="margin: 8px 0; padding-left: 5px;">$1</li>'
         )
         .replace(
-          /(<li.*<\/li>)/gs,
+          /(<li.*<\/li>)/g,
           '<ul style="margin: 15px 0; padding-left: 20px;">$1</ul>'
         )
 

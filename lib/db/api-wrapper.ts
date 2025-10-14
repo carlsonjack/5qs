@@ -36,10 +36,9 @@ export function withDatabase<T = any>(
         console.error("Failed to log system health error:", logError);
       }
 
-      return NextResponse.json(
-        { error: "Internal server error" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Internal server error" } as T, {
+        status: 500,
+      });
     }
   };
 }
