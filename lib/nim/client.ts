@@ -262,7 +262,19 @@ export async function chatCompletion(
 
   const pushCandidate = (value: any) => {
     const textCandidate = extractText(value).trim();
-    if (textCandidate) candidates.push(textCandidate);
+    if (textCandidate) {
+      candidates.push(textCandidate);
+      // Debug: Log what we're adding to candidates
+      if (
+        !isGuidedJson &&
+        textCandidate.includes("However, to strictly adhere")
+      ) {
+        console.warn(
+          "⚠️ DEBUG: Adding reasoning_content to candidates:",
+          textCandidate.substring(0, 100)
+        );
+      }
+    }
   };
 
   console.log("NIM response debug:", {
@@ -280,6 +292,10 @@ export async function chatCompletion(
     choiceText: choice?.text,
     choiceKeys: choice ? Object.keys(choice) : [],
     isGuidedJson,
+    // Debug: Show reasoning_content even when not guided to detect leaks
+    debugReasoningContent: (message as any)?.reasoning_content
+      ? (message as any).reasoning_content.substring(0, 100)
+      : undefined,
   });
 
   if (message) {
@@ -312,6 +328,58 @@ export async function chatCompletion(
   }
 
   let content = candidates[0] || "";
+
+  // Filter out reasoning content that appears in the main response
+  if (content) {
+    const originalContent = content;
+
+    // Remove <think> tags and their content
+    content = content.replace(/<think>[\s\S]*?<\/think>\s*/g, "").trim();
+
+    // Remove other reasoning patterns
+    content = content
+      .replace(/However, to strictly adhere[\s\S]*?(?=\*\*|$)/g, "")
+      .trim();
+    content = content.replace(/Revised Question[\s\S]*?(?=\*\*|$)/g, "").trim();
+    content = content
+      .replace(/Example follow-up[\s\S]*?(?=\*\*|$)/g, "")
+      .trim();
+
+    // Remove reasoning patterns that start with "Okay," or "Let me check"
+    content = content
+      .replace(/^(Okay,|Let me check|Wait,|Looking at)[\s\S]*?(?=\*\*|$)/gm, "")
+      .trim();
+
+    // Remove reasoning patterns that contain "conversation history" or "instructions"
+    content = content
+      .replace(
+        /[\s\S]*?(?=conversation history|instructions|check the instructions)[\s\S]*?(?=\*\*|$)/g,
+        ""
+      )
+      .trim();
+
+    // Remove any content before the first **Question** or **Step** marker
+    const questionMatch = content.match(/(\*\*Question \d+:|Question \d+:)/);
+    if (questionMatch) {
+      content = content.substring(content.indexOf(questionMatch[0])).trim();
+    }
+
+    if (originalContent !== content) {
+      console.log("✓ Filtered reasoning content from response");
+      console.log("Original length:", originalContent.length);
+      console.log("Filtered length:", content.length);
+    }
+  }
+
+  // Debug: Check if reasoning_content is leaking into non-guided responses
+  if (content && !isGuidedJson && (message as any)?.reasoning_content) {
+    console.warn("⚠️ WARNING: reasoning_content found in non-guided response!");
+    console.warn("Content:", content.substring(0, 200));
+    console.warn(
+      "Reasoning content:",
+      (message as any).reasoning_content?.substring(0, 200)
+    );
+  }
 
   if (content && isGuidedJson && (message as any)?.reasoning_content) {
     console.log(
