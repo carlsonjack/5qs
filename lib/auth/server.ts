@@ -2,6 +2,47 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextRequest } from "next/server";
 
+function getProjectRef() {
+  try {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    if (!url) return null;
+    const { host } = new URL(url);
+    return host.split(".")[0];
+  } catch {
+    return null;
+  }
+}
+
+function hasSupabaseSessionCookie() {
+  try {
+    const cookieStore = cookies();
+    const projectRef = getProjectRef();
+
+    return cookieStore
+      .getAll()
+      .some(({ name }) => {
+        if (
+          name === "sb-access-token" ||
+          name === "sb-refresh-token" ||
+          name === "__Host-sb-auth-token"
+        ) {
+          return true;
+        }
+
+        if (!projectRef) {
+          return name.startsWith("sb-") && name.endsWith("-auth-token");
+        }
+
+        return (
+          name === `sb-${projectRef}-auth-token` ||
+          name === `sb-${projectRef}-refresh-token`
+        );
+      });
+  } catch {
+    return false;
+  }
+}
+
 export async function createClient() {
   try {
     const cookieStore = await cookies();
@@ -59,6 +100,10 @@ export function createClientFromRequest(request: NextRequest) {
 
 export async function getUser() {
   try {
+    if (!hasSupabaseSessionCookie()) {
+      return null;
+    }
+
     const supabase = await createClient();
     if (!supabase) {
       console.log("Supabase client not available, continuing without user");
@@ -71,6 +116,14 @@ export async function getUser() {
     } = await supabase.auth.getUser();
 
     if (error) {
+      if (
+        error.name === "AuthSessionMissingError" ||
+        (typeof error.message === "string" &&
+          error.message.toLowerCase().includes("auth session missing"))
+      ) {
+        return null;
+      }
+
       console.error("Error getting user:", error);
       return null;
     }
@@ -85,6 +138,10 @@ export async function getUser() {
 
 export async function getSession() {
   try {
+    if (!hasSupabaseSessionCookie()) {
+      return null;
+    }
+
     const supabase = await createClient();
     if (!supabase) {
       console.log("Supabase client not available, continuing without session");
@@ -97,6 +154,14 @@ export async function getSession() {
     } = await supabase.auth.getSession();
 
     if (error) {
+      if (
+        error.name === "AuthSessionMissingError" ||
+        (typeof error.message === "string" &&
+          error.message.toLowerCase().includes("auth session missing"))
+      ) {
+        return null;
+      }
+
       console.error("Error getting session:", error);
       return null;
     }
