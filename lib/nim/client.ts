@@ -173,6 +173,7 @@ async function doFetch(
 export async function chatCompletion(
   params: ChatCompletionParams
 ): Promise<ChatCompletionResult> {
+  const isGuidedJson = !!params.nvext?.guided_json;
   const body: any = {
     model: params.model,
     messages: params.messages,
@@ -181,7 +182,7 @@ export async function chatCompletion(
     max_tokens: params.max_tokens ?? 1024,
     stream: params.stream ?? false,
   };
-  if (params.nvext?.guided_json) {
+  if (isGuidedJson) {
     body.nvext = { guided_json: params.nvext.guided_json };
   }
 
@@ -273,21 +274,30 @@ export async function chatCompletion(
     messageKeys: message ? Object.keys(message) : [],
     messageContent: message?.content,
     messageContentType: typeof message?.content,
+    messageReasoningContent: isGuidedJson
+      ? (message as any)?.reasoning_content
+      : undefined,
     choiceText: choice?.text,
     choiceKeys: choice ? Object.keys(choice) : [],
+    isGuidedJson,
   });
 
   if (message) {
     pushCandidate(message.content);
-    // Skip reasoning_content and notes to prevent internal thinking from showing
-    // pushCandidate((message as any).reasoning_content);
+    // For guided JSON mode, check reasoning_content as NIM may put the response there
+    if (isGuidedJson) {
+      pushCandidate((message as any).reasoning_content);
+    }
+    // Skip notes to prevent internal thinking from showing
     // pushCandidate((message as any).notes);
   }
 
   pushCandidate(choice?.text);
   pushCandidate(choice?.content);
-  // Skip reasoning_content to prevent internal thinking from showing
-  // pushCandidate(choice?.reasoning_content);
+  // For guided JSON mode, check reasoning_content as NIM may put the response there
+  if (isGuidedJson) {
+    pushCandidate((choice as any)?.reasoning_content);
+  }
 
   if (!candidates.length) {
     pushCandidate(data?.content);
@@ -302,6 +312,12 @@ export async function chatCompletion(
   }
 
   let content = candidates[0] || "";
+
+  if (content && isGuidedJson && (message as any)?.reasoning_content) {
+    console.log(
+      "✓ Extracted guided JSON response from reasoning_content field"
+    );
+  }
 
   if (!content && data) {
     const dataStr = JSON.stringify(data);

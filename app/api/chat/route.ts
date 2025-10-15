@@ -407,7 +407,7 @@ Conversation to analyze:`;
           "nvidia/llama-3.1-nemotron-ultra-253b-v1",
         temperature: 0.0,
         top_p: 0.9,
-        max_tokens: 200,
+        max_tokens: 500, // Increased to prevent JSON truncation
         nvext: { guided_json: GuidedJsonSchemaForNIM as any },
       });
       const content = res.content?.trim() || "";
@@ -420,50 +420,68 @@ Conversation to analyze:`;
         console.error("JSON parse error:", parseError);
         console.error("Raw content:", content.substring(0, 500));
 
-        // Try to repair the JSON by extracting the first valid JSON object
-        const jsonMatch = content.match(/\{.*\}/s);
+        // Try multiple repair strategies
+        let repairedJson: any = null;
+
+        // Strategy 1: Extract JSON object from surrounding text
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           try {
             json = JSON.parse(jsonMatch[0]);
-            console.log("Successfully repaired JSON from malformed response");
-          } catch (repairError) {
-            console.error("JSON repair failed:", repairError);
-
-            // Try to fix incomplete JSON by adding missing closing braces
-            let repairedJson = jsonMatch[0];
-            const openBraces = (repairedJson.match(/\{/g) || []).length;
-            const closeBraces = (repairedJson.match(/\}/g) || []).length;
-            const missingBraces = openBraces - closeBraces;
-
-            if (missingBraces > 0) {
-              repairedJson += "}".repeat(missingBraces);
-              try {
-                json = JSON.parse(repairedJson);
-                console.log(
-                  "Successfully repaired JSON by adding missing braces"
-                );
-              } catch (finalError) {
-                console.error("Final JSON repair failed:", finalError);
-                const errorMessage =
-                  parseError instanceof Error
-                    ? parseError.message
-                    : String(parseError);
-                throw new Error(`Invalid JSON: ${errorMessage}`);
-              }
-            } else {
-              const errorMessage =
-                parseError instanceof Error
-                  ? parseError.message
-                  : String(parseError);
-              throw new Error(`Invalid JSON: ${errorMessage}`);
-            }
+            console.log("✓ Repaired JSON by extracting object");
+            repairedJson = json;
+          } catch (e) {
+            // Continue to next strategy
           }
-        } else {
+        }
+
+        // Strategy 2: Fix incomplete JSON by adding missing closing braces and quotes
+        if (!repairedJson && jsonMatch) {
+          let attempt = jsonMatch[0];
+
+          // Remove trailing incomplete keys/values
+          attempt = attempt.replace(/,\s*"[^"]*"?\s*:?\s*"?[^"]*$/g, "");
+          attempt = attempt.replace(/,\s*"[^"]*"?\s*:?\s*$/g, "");
+
+          // Count and fix braces
+          const openBraces = (attempt.match(/\{/g) || []).length;
+          const closeBraces = (attempt.match(/\}/g) || []).length;
+          if (openBraces > closeBraces) {
+            attempt += "}".repeat(openBraces - closeBraces);
+          }
+
+          try {
+            json = JSON.parse(attempt);
+            console.log("✓ Repaired JSON by fixing incomplete structure");
+            repairedJson = json;
+          } catch (e) {
+            console.error("JSON structure repair failed:", e);
+          }
+        }
+
+        // Strategy 3: Build valid JSON from partial data
+        if (!repairedJson) {
+          const fieldPattern = /"(\w+)"\s*:\s*"([^"]*)"/g;
+          const matches = [...content.matchAll(fieldPattern)];
+          if (matches.length > 0) {
+            const obj: any = {};
+            matches.forEach(([, key, value]) => {
+              obj[key] = value;
+            });
+            json = obj;
+            console.log("✓ Rebuilt JSON from field matches:", Object.keys(obj));
+            repairedJson = json;
+          }
+        }
+
+        if (!repairedJson) {
           const errorMessage =
             parseError instanceof Error
               ? parseError.message
               : String(parseError);
-          throw new Error(`Invalid JSON: ${errorMessage}`);
+          throw new Error(
+            `Invalid JSON after all repair attempts: ${errorMessage}`
+          );
         }
       }
 
