@@ -47,6 +47,26 @@ export const GuidedJsonSchemaForNIM = {
   additionalProperties: false,
 } as const;
 
+// Website Analysis Schema for NIM guided JSON
+export const WebsiteAnalysisSchemaForNIM = {
+  type: "object",
+  properties: {
+    productsServices: { type: "string" },
+    customerSegment: { type: "string" },
+    techStack: { type: "string" },
+    marketingStrengths: { type: "string" },
+    marketingWeaknesses: { type: "string" },
+  },
+  required: [
+    "productsServices",
+    "customerSegment",
+    "techStack",
+    "marketingStrengths",
+    "marketingWeaknesses",
+  ],
+  additionalProperties: false,
+} as const;
+
 // LeadSignals types
 export interface LeadSignals {
   budgetBand: "Not specified" | "<$5k" | "$5k–$20k" | "$20k–$50k" | ">$50k";

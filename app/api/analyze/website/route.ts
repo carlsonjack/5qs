@@ -9,6 +9,7 @@ import {
 } from "@/lib/rag/index";
 import { filterOutput } from "@/lib/safety";
 import { withDatabaseIntegration } from "@/lib/db/integration";
+import { WebsiteAnalysisSchemaForNIM } from "@/lib/schemas";
 
 async function fetchWebsiteContent(url: string) {
   try {
@@ -312,7 +313,8 @@ export async function POST(req: NextRequest) {
             "nvidia/llama-3.1-nemotron-ultra-253b-v1",
           temperature: 0.1,
           top_p: 0.9,
-          max_tokens: 400,
+          max_tokens: 600, // Increased to prevent JSON truncation
+          nvext: { guided_json: WebsiteAnalysisSchemaForNIM as any },
         });
         analysisResponse = res.content;
       } catch (nimError) {
@@ -451,7 +453,77 @@ export async function POST(req: NextRequest) {
       let analysisResult;
 
       try {
-        analysisResult = JSON.parse(analysisResponse);
+        // Try parsing with enhanced repair strategies
+        let json;
+        try {
+          json = JSON.parse(analysisResponse);
+        } catch (parseError) {
+          console.error("JSON parse error:", parseError);
+          console.error("Raw content:", analysisResponse.substring(0, 500));
+
+          // Try multiple repair strategies
+          let repairedJson: any = null;
+
+          // Strategy 1: Extract JSON object from surrounding text
+          const jsonMatch = analysisResponse.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            try {
+              json = JSON.parse(jsonMatch[0]);
+              console.log("✓ Repaired JSON by extracting object");
+              repairedJson = json;
+            } catch (e) {
+              // Continue to next strategy
+            }
+          }
+
+          // Strategy 2: Fix incomplete JSON by adding missing closing braces and quotes
+          if (!repairedJson && jsonMatch) {
+            let attempt = jsonMatch[0];
+
+            // Remove trailing incomplete keys/values
+            attempt = attempt.replace(/,\s*"[^"]*"?\s*:?\s*"?[^"]*$/g, "");
+            attempt = attempt.replace(/,\s*"[^"]*"?\s*:?\s*$/g, "");
+
+            // Count and fix braces
+            const openBraces = (attempt.match(/\{/g) || []).length;
+            const closeBraces = (attempt.match(/\}/g) || []).length;
+            if (openBraces > closeBraces) {
+              attempt += "}".repeat(openBraces - closeBraces);
+            }
+
+            try {
+              json = JSON.parse(attempt);
+              console.log("✓ Repaired JSON by fixing incomplete structure");
+              repairedJson = json;
+            } catch (e) {
+              console.error("JSON structure repair failed:", e);
+            }
+          }
+
+          // Strategy 3: Build valid JSON from partial data
+          if (!repairedJson) {
+            const fieldPattern = /"(\w+)"\s*:\s*"([^"]*)"/g;
+            const matches = [...analysisResponse.matchAll(fieldPattern)];
+            if (matches.length > 0) {
+              const obj: any = {};
+              matches.forEach(([, key, value]) => {
+                obj[key] = value;
+              });
+              json = obj;
+              console.log(
+                "✓ Rebuilt JSON from field matches:",
+                Object.keys(obj)
+              );
+              repairedJson = json;
+            }
+          }
+
+          if (!repairedJson) {
+            throw parseError;
+          }
+        }
+
+        analysisResult = json;
         const requiredFields = [
           "productsServices",
           "customerSegment",
@@ -471,7 +543,10 @@ export async function POST(req: NextRequest) {
         )}`;
         analysisResult.screenshotUrl = screenshotUrl;
       } catch (parseError) {
-        console.error("Error parsing NVIDIA response:", parseError);
+        console.error(
+          "Error parsing NVIDIA response after all repair attempts:",
+          parseError
+        );
         console.log("Raw NVIDIA response:", analysisResponse);
 
         // Fallback: create structured response based on content analysis

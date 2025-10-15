@@ -2,22 +2,50 @@
 
 ## Issue Description
 
-In production, the application was experiencing JSON parsing errors when using NVIDIA NIM's guided JSON feature for context summary generation. The error manifested as:
+In production, the application was experiencing JSON parsing errors when using NVIDIA NIM API. The errors manifested in two places:
+
+### Primary Issue: Context Summary Generation
 
 ```
 JSON parse error: SyntaxError: Unexpected end of JSON input
 ```
 
+### Secondary Issue: Website Analysis Quality Regression
+
+- Website analysis falling back to generic results
+- Missing specific business context (e.g., "Online auction platform for vintage and classic cars" → "Product-based business")
+- Same underlying JSON extraction problem
+
 ### Root Causes
 
-1. **Response Field Mismatch**: NVIDIA NIM API was returning JSON responses in the `reasoning_content` field instead of the standard `content` field when using guided JSON mode
+1. **Response Field Mismatch**: NVIDIA NIM API returns JSON responses in the `reasoning_content` field instead of the standard `content` field when using guided JSON mode
 2. **Content Extraction Logic**: The NIM client was explicitly skipping `reasoning_content` to prevent internal thinking from appearing in responses
-3. **Truncated Responses**: JSON responses were being truncated due to insufficient `max_tokens` (200 tokens), causing incomplete JSON structures
-4. **Worked Locally, Failed in Production**: Different model behavior or API endpoints between development and production environments
+3. **Truncated Responses**: JSON responses were being truncated due to insufficient `max_tokens`, causing incomplete JSON structures
+4. **Missing Guided JSON in Website Analysis**: Website analysis wasn't using guided JSON mode at all, causing it to also miss `reasoning_content` responses
+5. **Worked Locally, Failed in Production**: Different model behavior or API endpoints between development and production environments
 
 ## Changes Made
 
-### 1. Enhanced NIM Client (`lib/nim/client.ts`)
+### 1. Added Website Analysis Schema (`lib/schemas.ts`)
+
+Created a new guided JSON schema specifically for website analysis:
+
+```typescript
+export const WebsiteAnalysisSchemaForNIM = {
+  type: "object",
+  properties: {
+    productsServices: { type: "string" },
+    customerSegment: { type: "string" },
+    techStack: { type: "string" },
+    marketingStrengths: { type: "string" },
+    marketingWeaknesses: { type: "string" },
+  },
+  required: [...],
+  additionalProperties: false,
+} as const;
+```
+
+### 2. Enhanced NIM Client (`lib/nim/client.ts`)
 
 #### Added Guided JSON Detection
 
@@ -46,7 +74,27 @@ if (message) {
 - Added `messageReasoningContent` and `isGuidedJson` to debug logs
 - Logs success message when extracting from reasoning_content: "✓ Extracted guided JSON response from reasoning_content field"
 
-### 2. Improved Context Summary Generation (`app/api/chat/route.ts`)
+### 3. Fixed Website Analysis (`app/api/analyze/website/route.ts`)
+
+#### Enabled Guided JSON Mode
+
+Added guided JSON to website analysis endpoint:
+
+```typescript
+import { WebsiteAnalysisSchemaForNIM } from "@/lib/schemas";
+
+const res = await chatCompletion({
+  // ... other params
+  max_tokens: 600, // Increased from 400
+  nvext: { guided_json: WebsiteAnalysisSchemaForNIM as any },
+});
+```
+
+#### Added JSON Repair Strategies
+
+Implemented the same three-tier repair mechanism for website analysis responses to handle incomplete or malformed JSON. This ensures specific business context (like "Online auction platform for vintage and classic cars") is properly extracted instead of falling back to generic descriptions.
+
+### 4. Improved Context Summary Generation (`app/api/chat/route.ts`)
 
 #### Increased Token Limit
 
@@ -85,12 +133,18 @@ Each strategy logs its success:
 
 ```bash
 # Run the development server
-npm run dev
+pnpm dev  # or npm run dev
 
-# Test context summary generation by:
-1. Starting a new conversation
-2. Providing business information through all 5 questions
-3. Verifying context summary is generated without errors
+# Test website analysis:
+1. Enter a website URL (e.g., https://bringatrailer.com/)
+2. Verify specific business details are extracted (not generic fallbacks)
+3. Check logs for "✓ Extracted guided JSON response from reasoning_content field"
+
+# Test context summary generation:
+1. Start a new conversation
+2. Provide business information through all 5 questions
+3. Verify context summary is generated without errors
+4. Confirm specific details are preserved throughout the conversation
 ```
 
 ### Production Monitoring
@@ -111,9 +165,12 @@ Monitor logs for these success indicators:
 ## Expected Behavior After Fix
 
 1. **Guided JSON responses will be properly extracted** from either `content` or `reasoning_content` fields
-2. **Truncated JSON will be repaired** using intelligent repair strategies
-3. **Clear logging** will indicate which extraction/repair strategy succeeded
-4. **Fallback context summaries** will still work if all strategies fail (graceful degradation)
+2. **Website analysis will extract specific business details** instead of falling back to generic descriptions
+   - Example: "Online auction platform for vintage and classic cars" instead of "Product-based business"
+3. **Truncated JSON will be repaired** using intelligent repair strategies
+4. **Clear logging** will indicate which extraction/repair strategy succeeded
+5. **Fallback context summaries** will still work if all strategies fail (graceful degradation)
+6. **Context summary generation success rate** should approach 100% in production
 
 ## Deployment Notes
 
@@ -125,16 +182,24 @@ Monitor logs for these success indicators:
 ## Related Files Modified
 
 - `/lib/nim/client.ts` - Core NIM client response extraction
+- `/lib/schemas.ts` - Added WebsiteAnalysisSchemaForNIM
+- `/app/api/analyze/website/route.ts` - Website analysis with guided JSON
 - `/app/api/chat/route.ts` - Context summary generation and JSON repair
 
 ## Monitoring Points
 
 After deployment, monitor:
 
-1. Context summary generation success rate
-2. JSON repair strategy usage frequency
-3. Overall chat API error rate
-4. Token usage (should be slightly higher due to 500 max_tokens)
+1. Website analysis quality (check for specific vs. generic business descriptions)
+2. Website analysis fallback rate (should decrease significantly)
+3. Context summary generation success rate (should be near 100%)
+4. JSON repair strategy usage frequency
+5. Overall chat and website analysis API error rates
+6. Token usage (slightly higher due to increased max_tokens: 500 for context, 600 for website)
+7. Look for log messages:
+   - `✓ Extracted guided JSON response from reasoning_content field`
+   - `✓ Repaired JSON by [strategy]`
+   - Absence of `NVIDIA API failed, using enhanced fallback analysis`
 
 ## Rollback Plan
 
