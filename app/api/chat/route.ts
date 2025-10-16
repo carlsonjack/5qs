@@ -415,7 +415,19 @@ Conversation to analyze:`;
       // Better JSON parsing with repair mechanism
       let json;
       try {
-        json = JSON.parse(content);
+        // Remove markdown code fences if present
+        let cleanContent = content;
+        if (cleanContent.startsWith("```") && cleanContent.endsWith("```")) {
+          cleanContent = cleanContent.slice(3, -3).trim();
+        }
+        if (
+          cleanContent.startsWith("```json") &&
+          cleanContent.endsWith("```")
+        ) {
+          cleanContent = cleanContent.slice(7, -3).trim();
+        }
+
+        json = JSON.parse(cleanContent);
       } catch (parseError) {
         console.error("JSON parse error:", parseError);
         console.error("Raw content:", content.substring(0, 500));
@@ -485,7 +497,27 @@ Conversation to analyze:`;
         }
       }
 
-      const parsed = ContextSummarySchema.parse(json);
+      // Convert arrays to strings for schema compliance
+      const normalizedJson = {
+        businessType: Array.isArray(json.businessType)
+          ? json.businessType.join(", ")
+          : json.businessType,
+        painPoints: Array.isArray(json.painPoints)
+          ? json.painPoints.join(", ")
+          : json.painPoints,
+        goals: Array.isArray(json.goals) ? json.goals.join(", ") : json.goals,
+        dataAvailable: Array.isArray(json.dataAvailable)
+          ? json.dataAvailable.join(", ")
+          : json.dataAvailable,
+        priorTechUse: Array.isArray(json.priorTechUse)
+          ? json.priorTechUse.join(", ")
+          : json.priorTechUse,
+        growthIntent: Array.isArray(json.growthIntent)
+          ? json.growthIntent.join(", ")
+          : json.growthIntent,
+      };
+
+      const parsed = ContextSummarySchema.parse(normalizedJson);
       return parsed as ContextSummary;
     }
 

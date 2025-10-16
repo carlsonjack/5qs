@@ -3,7 +3,7 @@ import { describe, it, expect } from "vitest";
 describe("Business Plan Generation Logic", () => {
   // Mock the chat API endpoint directly
   const mockChatAPI = async (messages: any[], currentStep: number) => {
-    const response = await fetch("http://localhost:3001/api/chat", {
+    const response = await fetch("http://localhost:3000/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -154,7 +154,7 @@ describe("Business Plan Generation Logic", () => {
       marketingStrengths: "SEO, Content Marketing",
     };
 
-    const response = await fetch("http://localhost:3001/api/chat", {
+    const response = await fetch("http://localhost:3000/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -178,7 +178,7 @@ describe("Business Plan Generation Logic", () => {
       largestCostCenters: "Engineering, Marketing",
     };
 
-    const response = await fetch("http://localhost:3001/api/chat", {
+    const response = await fetch("http://localhost:3000/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -195,4 +195,3 @@ describe("Business Plan Generation Logic", () => {
     expect(data.contextSummary.dataAvailable).toContain("Growing 20% YoY");
   });
 });
-

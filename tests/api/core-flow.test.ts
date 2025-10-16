@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 
 describe("Core Business Plan Generation Flow", () => {
-  const API_BASE = "http://localhost:3001";
+  const API_BASE = "http://localhost:3000";
 
   // Helper function to make API calls
   const callChatAPI = async (
@@ -199,7 +199,7 @@ describe("Core Business Plan Generation Flow", () => {
 // Integration test to verify the full API is working
 describe("API Health Check", () => {
   it("should respond to chat API requests", async () => {
-    const response = await fetch("http://localhost:3001/api/chat", {
+    const response = await fetch("http://localhost:3000/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -216,4 +216,3 @@ describe("API Health Check", () => {
     expect(data).toHaveProperty("message");
   });
 });
-
