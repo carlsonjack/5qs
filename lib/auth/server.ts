@@ -13,31 +13,29 @@ function getProjectRef() {
   }
 }
 
-function hasSupabaseSessionCookie() {
+async function hasSupabaseSessionCookie() {
   try {
-    const cookieStore = cookies();
+    const cookieStore = await cookies();
     const projectRef = getProjectRef();
 
-    return cookieStore
-      .getAll()
-      .some(({ name }) => {
-        if (
-          name === "sb-access-token" ||
-          name === "sb-refresh-token" ||
-          name === "__Host-sb-auth-token"
-        ) {
-          return true;
-        }
+    return cookieStore.getAll().some(({ name }) => {
+      if (
+        name === "sb-access-token" ||
+        name === "sb-refresh-token" ||
+        name === "__Host-sb-auth-token"
+      ) {
+        return true;
+      }
 
-        if (!projectRef) {
-          return name.startsWith("sb-") && name.endsWith("-auth-token");
-        }
+      if (!projectRef) {
+        return name.startsWith("sb-") && name.endsWith("-auth-token");
+      }
 
-        return (
-          name === `sb-${projectRef}-auth-token` ||
-          name === `sb-${projectRef}-refresh-token`
-        );
-      });
+      return (
+        name === `sb-${projectRef}-auth-token` ||
+        name === `sb-${projectRef}-refresh-token`
+      );
+    });
   } catch {
     return false;
   }
@@ -100,7 +98,7 @@ export function createClientFromRequest(request: NextRequest) {
 
 export async function getUser() {
   try {
-    if (!hasSupabaseSessionCookie()) {
+    if (!(await hasSupabaseSessionCookie())) {
       return null;
     }
 

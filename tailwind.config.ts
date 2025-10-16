@@ -1,4 +1,4 @@
-import type { Config } from "tailwindcss"
+import type { Config } from "tailwindcss";
 
 const config: Config = {
   darkMode: ["class"],
@@ -82,8 +82,63 @@ const config: Config = {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
       },
+      backdropBlur: {
+        glass: "var(--glass-blur)",
+        "glass-elevated": "var(--glass-elevated-blur)",
+      },
+      backgroundImage: {
+        "glass-surface":
+          "color-mix(in oklab, var(--glass-tint) calc(var(--glass-opacity) * 100%), transparent)",
+        "glass-elevated":
+          "color-mix(in oklab, var(--glass-tint) calc(var(--glass-elevated-opacity) * 100%), transparent)",
+      },
+      boxShadow: {
+        glass: "var(--glass-shadow)",
+        "glass-elevated": "var(--glass-elevated-shadow)",
+      },
     },
   },
-  plugins: [require("tailwindcss-animate")],
-}
-export default config
+  plugins: [
+    require("tailwindcss-animate"),
+    function ({ addUtilities, addComponents }) {
+      addUtilities({
+        ".glass-surface": {
+          "backdrop-filter": "blur(var(--glass-blur))",
+          background:
+            "color-mix(in oklab, var(--glass-tint) calc(var(--glass-opacity) * 100%), transparent)",
+          border: "1px solid var(--glass-border)",
+          "box-shadow": "var(--glass-shadow)",
+        },
+        ".glass-elevated": {
+          "backdrop-filter": "blur(var(--glass-elevated-blur))",
+          background:
+            "color-mix(in oklab, var(--glass-tint) calc(var(--glass-elevated-opacity) * 100%), transparent)",
+          border: "1px solid var(--glass-border)",
+          "box-shadow": "var(--glass-elevated-shadow)",
+        },
+        ".glass-divider": {
+          "border-top": "1px solid var(--glass-border)",
+        },
+        ".chrome-hover": {
+          transition: "filter 0.2s ease",
+        },
+        ".chrome-hover:hover": {
+          filter: "brightness(1.05)",
+        },
+        ".edge-fade": {
+          "mask-image":
+            "linear-gradient(to bottom, transparent 0, black 16px, black calc(100% - 16px), transparent 100%)",
+        },
+        ".glass-outline": {
+          border: "1px solid var(--glass-border)",
+          transition: "border-color 0.2s ease",
+        },
+        ".glass-outline:focus": {
+          "border-color": "hsl(var(--ring))",
+          outline: "none",
+        },
+      });
+    },
+  ],
+};
+export default config;

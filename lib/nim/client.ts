@@ -173,16 +173,16 @@ async function doFetch(
 export async function chatCompletion(
   params: ChatCompletionParams
 ): Promise<ChatCompletionResult> {
-  const isGuidedJson = !!params.nvext?.guided_json;
+  const isGuidedJson = !!(params.nvext && params.nvext.guided_json);
   const body: any = {
     model: params.model,
     messages: params.messages,
     temperature: params.temperature ?? 0.4,
     top_p: params.top_p ?? 0.95,
-    max_tokens: params.max_tokens ?? 1024,
+    max_tokens: params.max_tokens ?? 4096, // Increased default to prevent truncation
     stream: params.stream ?? false,
   };
-  if (isGuidedJson) {
+  if (isGuidedJson && params.nvext) {
     body.nvext = { guided_json: params.nvext.guided_json };
   }
 
@@ -333,8 +333,10 @@ export async function chatCompletion(
   if (content) {
     const originalContent = content;
 
-    // Remove <think> tags and their content
+    // Remove <think> tags and their content (including incomplete tags)
     content = content.replace(/<think>[\s\S]*?<\/think>\s*/g, "").trim();
+    content = content.replace(/<think>[\s\S]*$/g, "").trim();
+    content = content.replace(/^[\s\S]*?<think>/g, "").trim();
 
     // Remove other reasoning patterns
     content = content
@@ -358,11 +360,197 @@ export async function chatCompletion(
       )
       .trim();
 
+    // Remove specific reasoning patterns
+    content = content
+      .replace(/\*\*Awaiting your response to Q\d+.*?\*\*/g, "")
+      .replace(/\*\*Final Note for Next Steps\*\*[\s\S]*?(?=\*\*|$)/g, "")
+      .replace(
+        /\*\(This final note is for my internal planning\.[\s\S]*?\)\*\*/g,
+        ""
+      )
+      .replace(/\*\(Since you've already discussed[\s\S]*?\)\*/g, "")
+      .replace(/\*\(If you'd like to delve deeper[\s\S]*?\)\*/g, "")
+      .replace(/\*\(This will help me refine[\s\S]*?\)\*/g, "")
+      .replace(/\*\(To ensure a seamless transition[\s\S]*?\)\*/g, "")
+      .replace(/\*\(Once you provide your final answer[\s\S]*?\)\*/g, "")
+      .replace(/\*Once you provide your final answer[\s\S]*?\*/g, "")
+      .replace(
+        /\*\(This final note is for my internal planning\.[\s\S]*?\)/g,
+        ""
+      )
+      .replace(
+        /\*\*[\s\S]*?\(This final note is for my internal planning\.[\s\S]*?\)/g,
+        ""
+      )
+      .replace(/---[\s]*$/gm, "") // Remove trailing --- separators
+      .replace(/^\s*---\s*$/gm, "") // Remove standalone --- lines
+      .replace(/\*\*\s*$/gm, "") // Remove trailing **
+      .replace(
+        /\(Note: Prepared to move to Question \d+ upon your response\.\)/g,
+        ""
+      )
+      .replace(/\(Note: [^)]*\)/g, "") // Remove any note patterns
+      .trim();
+
     // Remove any content before the first **Question** or **Step** marker
     const questionMatch = content.match(/(\*\*Question \d+:|Question \d+:)/);
     if (questionMatch) {
       content = content.substring(content.indexOf(questionMatch[0])).trim();
     }
+
+    // Fix malformed markdown (extra asterisks)
+    // Remove trailing asterisks after colons in question headers
+    const colonIndex = content.indexOf(":");
+    if (colonIndex !== -1) {
+      const beforeColon = content.substring(0, colonIndex + 1);
+      const afterColon = content.substring(colonIndex + 1);
+      const cleanedAfter = afterColon.replace(/\*+$/, "");
+      content = beforeColon + cleanedAfter;
+    }
+
+    // Comprehensive content cleaning - remove all internal reasoning and formatting artifacts
+    content = content
+      // Remove malformed markdown
+      .replace(/\*\*Question \d+ \([^)]+\):/g, "Question 1:") // Fix question headers
+      .replace(/\*\*([^*]+)$/gm, "$1") // Remove trailing ** without closing
+      .replace(/^\*\*([^*]+)$/gm, "$1") // Remove leading ** without closing
+      .replace(/\*\*([^*\n]+)\n/g, "$1\n") // Fix ** at end of lines
+
+      // Remove all internal reasoning patterns
+      .replace(/\*\*Next:\*\*/g, "") // Remove **Next:** patterns
+      .replace(/\*\*Next:\*\*.*$/gm, "") // Remove **Next:** and everything after
+      .replace(/\*End of Question \d+\*/g, "") // Remove *End of Question 1* patterns
+      .replace(/\*End of question \d+\*/g, "") // Remove *End of question 1* patterns
+      .replace(/\*End of Question \d+\*.*$/gm, "") // Remove *End of Question 1* and everything after
+      .replace(/\*End of question \d+\*.*$/gm, "") // Remove *End of question 1* and everything after
+      .replace(/\*\*Let's explore.*$/gm, "") // Remove **Let's explore** and everything after
+      .replace(/\*End of Question.*$/gm, "") // Remove any *End of Question* patterns
+      .replace(/\*End of question.*$/gm, "") // Remove any *End of question* patterns
+
+      // Remove all "Adjusted" patterns
+      .replace(/Adjusted Q\d+ for Plain Text:.*$/gm, "") // Remove "Adjusted Q2 for Plain Text:" patterns
+      .replace(/Adjusted Q\d+ for.*$/gm, "") // Remove any "Adjusted Q" patterns
+      .replace(/^Adjusted.*$/gm, "") // Remove any line starting with "Adjusted"
+      .replace(/Adjusted.*$/gm, "") // Remove any "Adjusted" patterns anywhere
+
+      // Remove other internal formatting artifacts
+      .replace(/Revised Question.*$/gm, "") // Remove "Revised Question" patterns
+      .replace(/Updated Question.*$/gm, "") // Remove "Updated Question" patterns
+      .replace(/Modified Question.*$/gm, "") // Remove "Modified Question" patterns
+      .replace(/Reformatted Question.*$/gm, "") // Remove "Reformatted Question" patterns
+      .replace(/Plain Text.*$/gm, "") // Remove "Plain Text" patterns
+      .replace(/for Plain Text.*$/gm, "") // Remove "for Plain Text" patterns
+
+      // Remove AI formatting headers
+      .replace(/\*\*Bold Highlight:\*\*.*$/gm, "") // Remove "**Bold Highlight:**" patterns
+      .replace(/Bold Highlight:.*$/gm, "") // Remove "Bold Highlight:" patterns
+      .replace(/\*\*Follow-Up \(Optional for Clarity\):\*\*.*$/gm, "") // Remove "**Follow-Up (Optional for Clarity):**" patterns
+      .replace(/Follow-Up \(Optional for Clarity\):.*$/gm, "") // Remove "Follow-Up (Optional for Clarity):" patterns
+      .replace(/Awaiting your detailed response.*$/gm, "") // Remove "Awaiting your detailed response" patterns
+      .replace(/Awaiting your response.*$/gm, "") // Remove "Awaiting your response" patterns
+
+      // Remove duplicate question headers
+      .replace(/Question \d+:.*Question \d+:.*$/gm, (match) => {
+        const lines = match.split("\n");
+        const firstQuestion = lines.find((line) => line.includes("Question"));
+        return firstQuestion || match;
+      })
+
+      .trim();
+
+    // Additional aggressive filtering for any remaining reasoning content
+    // Remove any content that looks like internal reasoning before the actual question
+    const lines = content.split("\n");
+    const filteredLines = [];
+    let foundQuestion = false;
+
+    for (const line of lines) {
+      // If we find a question marker, start keeping lines
+      if (line.includes("**Question") || line.includes("Question")) {
+        foundQuestion = true;
+      }
+
+      // Skip lines that look like reasoning content
+      if (
+        !foundQuestion &&
+        (line.includes("<think>") ||
+          line.includes("The previous questions") ||
+          line.includes("Now, they want to move") ||
+          line.includes("But wait,") ||
+          line.includes("However,") ||
+          line.includes("But looking back") ||
+          line.includes("Maybe they want") ||
+          line.includes("So the appropriate") ||
+          line.includes("Since the user") ||
+          line.includes("But the user's message") ||
+          line.includes("This final note is for my internal planning") ||
+          line.includes("The user will not see this") ||
+          line.includes("internal planning") ||
+          line.includes("awaiting your response") ||
+          line.includes("Once you provide your final answer") ||
+          line.includes("I'll generate a tailored") ||
+          line.includes("To ensure a seamless transition") ||
+          line.includes("This will help me refine") ||
+          line.includes("If you'd like to delve deeper") ||
+          line.includes("Since you've already discussed") ||
+          line.includes("Adjusted Q") ||
+          line.includes("for Plain Text") ||
+          line.includes("Adjusted") ||
+          line.includes("Revised Question") ||
+          line.includes("Updated Question") ||
+          line.includes("Modified Question") ||
+          line.includes("Reformatted Question") ||
+          line.includes("Plain Text:") ||
+          line.includes("Plain Text version") ||
+          line.includes("Here's the") ||
+          line.includes("Here is the") ||
+          line.includes("Let me provide") ||
+          line.includes("Let me give") ||
+          line.includes("I'll provide") ||
+          line.includes("I'll give") ||
+          line.includes("Here's a") ||
+          line.includes("Here is a") ||
+          line.includes("Bold Highlight:") ||
+          line.includes("**Bold Highlight**:") ||
+          line.includes("Follow-Up (Optional for Clarity):") ||
+          line.includes("**Follow-Up (Optional for Clarity)**:") ||
+          line.includes("Awaiting your detailed response") ||
+          line.includes("Awaiting your response"))
+      ) {
+        continue;
+      }
+
+      filteredLines.push(line);
+    }
+
+    content = filteredLines.join("\n").trim();
+
+    // Final cleanup pass - remove any remaining artifacts
+    content = content
+      // Remove duplicate question content
+      .replace(/Question \d+:.*?(?=Question \d+:|$)/g, (match) => {
+        const lines = match.split("\n");
+        const questionLine = lines.find((line) => line.includes("Question"));
+        const contentLines = lines.filter(
+          (line) => !line.includes("Question") && line.trim()
+        );
+        return questionLine
+          ? questionLine + "\n" + contentLines.join("\n")
+          : match;
+      })
+
+      // Remove any remaining internal formatting
+      .replace(/^Adjusted.*$/gm, "")
+      .replace(/^Revised.*$/gm, "")
+      .replace(/^Updated.*$/gm, "")
+      .replace(/^Modified.*$/gm, "")
+      .replace(/^Reformatted.*$/gm, "")
+      .replace(/^Plain Text.*$/gm, "")
+      .replace(/^for Plain Text.*$/gm, "")
+
+      // Clean up extra whitespace
+      .replace(/\n\s*\n\s*\n/g, "\n\n")
+      .trim();
 
     if (originalContent !== content) {
       console.log("✓ Filtered reasoning content from response");

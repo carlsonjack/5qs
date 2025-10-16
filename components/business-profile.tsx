@@ -63,14 +63,17 @@ export function BusinessProfile({ contextSummary }: BusinessProfileProps) {
   ];
 
   return (
-    <Card className="h-full">
-      <CardHeader className="pb-3">
+    <Card variant="glass" className="h-full flex flex-col">
+      <CardHeader className="pb-3 flex-shrink-0">
         <CardTitle className="text-lg flex items-center gap-2">
           <Building2 className="w-5 h-5 text-primary" />
           Business Profile
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent
+        className="space-y-4 flex-1 overflow-y-auto max-h-[calc(100vh-200px)] edge-fade"
+        style={{ scrollbarWidth: "thin" }}
+      >
         {fields.map((field) => {
           const Icon = field.icon;
           const isSpecified = field.value !== "Not yet specified";

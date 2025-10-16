@@ -270,7 +270,7 @@ async function callNvidiaAPI(messages: any[], systemPrompt: string) {
   for (const model of candidateModels) {
     const isChatQA = /llama3-chatqa/i.test(model);
     const sysRole = isChatQA ? "context" : "system";
-    const maxTokens = isChatQA ? 1024 : 2048;
+    const maxTokens = isChatQA ? 2048 : 4096; // Increased to prevent truncation
 
     const requestBody = {
       model,

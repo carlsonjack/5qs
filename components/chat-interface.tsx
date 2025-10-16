@@ -11,6 +11,8 @@ import {
   CheckCircle,
   Sparkles,
   MessageCircle,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useToast } from "@/hooks/use-toast";
@@ -282,6 +284,17 @@ export function ChatInterface() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { theme, setTheme } = useTheme();
   const { toast } = useToast();
+
+  // Reduce translucency preference
+  const [reduceTranslucency, setReduceTranslucency] = useState(false);
+
+  // Apply reduce translucency to HTML element
+  useEffect(() => {
+    document.documentElement.setAttribute(
+      "data-reduce-translucency",
+      reduceTranslucency.toString()
+    );
+  }, [reduceTranslucency]);
 
   // Select a random motivational message for each session
   const [motivationalMessage, setMotivationalMessage] = useState(() => {
@@ -853,7 +866,7 @@ Based on our conversation, your business has significant opportunities for growt
   return (
     <div className="flex h-screen bg-background">
       {/* Left Sidebar - Stepper */}
-      <div className="hidden lg:flex w-64 border-r bg-card p-6 flex-col">
+      <div className="hidden lg:flex w-64 border-r glass-surface p-6 flex-col sticky top-0 h-screen">
         <div className="mb-8 flex items-center space-x-3">
           <Image
             src="/logo.png"
@@ -895,13 +908,26 @@ Based on our conversation, your business has significant opportunities for growt
             )}
             {theme === "dark" ? "Light Mode" : "Dark Mode"}
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setReduceTranslucency(!reduceTranslucency)}
+            className="w-full"
+          >
+            {reduceTranslucency ? (
+              <Eye className="w-4 h-4 mr-2" />
+            ) : (
+              <EyeOff className="w-4 h-4 mr-2" />
+            )}
+            {reduceTranslucency ? "Show Glass" : "Reduce Glass"}
+          </Button>
         </div>
       </div>
 
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <div className="border-b p-4 flex items-center justify-between">
+        <div className="border-b glass-surface p-4 flex items-center justify-between sticky top-0 z-10">
           <div className="flex items-center space-x-3">
             <Image
               src="/logo.png"
@@ -948,6 +974,17 @@ Based on our conversation, your business has significant opportunities for growt
                 <Sun className="w-4 h-4" />
               ) : (
                 <Moon className="w-4 h-4" />
+              )}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setReduceTranslucency(!reduceTranslucency)}
+            >
+              {reduceTranslucency ? (
+                <Eye className="w-4 h-4" />
+              ) : (
+                <EyeOff className="w-4 h-4" />
               )}
             </Button>
           </div>
@@ -1192,7 +1229,7 @@ Based on our conversation, your business has significant opportunities for growt
       </div>
 
       {/* Right Sidebar - Business Profile */}
-      <div className="hidden xl:flex w-80 border-l bg-card p-6 flex-col">
+      <div className="hidden xl:flex w-80 border-l glass-surface p-6 flex-col sticky top-0 h-screen">
         <BusinessProfile contextSummary={contextSummary} />
 
         {/* Success Message - Only show when we have analysis data */}
