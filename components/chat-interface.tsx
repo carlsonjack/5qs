@@ -11,8 +11,6 @@ import {
   CheckCircle,
   Sparkles,
   MessageCircle,
-  Eye,
-  EyeOff,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useToast } from "@/hooks/use-toast";
@@ -24,7 +22,13 @@ import { BusinessProfile } from "./business-profile";
 import { ContextGathering } from "./context-gathering";
 import { BusinessPlanViewer } from "./business-plan-viewer";
 import { getProfile } from "@/lib/profiles";
+import {
+  calculateProgress,
+  getLevelProgress,
+} from "@/lib/gamification/progress";
+import { BadgeType, BADGES } from "@/lib/gamification/badges";
 import Image from "next/image";
+import Link from "next/link";
 
 // Motivational messages that rotate randomly for each session
 const MOTIVATIONAL_MESSAGES = {
@@ -281,20 +285,16 @@ export function ChatInterface() {
   const [canGeneratePlan, setCanGeneratePlan] = useState(false);
   const [websiteAnalysis, setWebsiteAnalysis] = useState<any>(null);
   const [financialAnalysis, setFinancialAnalysis] = useState<any>(null);
+  // Gamification state
+  const [earnedBadges, setEarnedBadges] = useState<BadgeType[]>([]);
+  const [earnedAt, setEarnedAt] = useState<Record<BadgeType, number>>(
+    {} as Record<BadgeType, number>
+  );
+  const [xp, setXp] = useState(0);
+  const [level, setLevel] = useState(1);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { theme, setTheme } = useTheme();
   const { toast } = useToast();
-
-  // Reduce translucency preference
-  const [reduceTranslucency, setReduceTranslucency] = useState(false);
-
-  // Apply reduce translucency to HTML element
-  useEffect(() => {
-    document.documentElement.setAttribute(
-      "data-reduce-translucency",
-      reduceTranslucency.toString()
-    );
-  }, [reduceTranslucency]);
 
   // Select a random motivational message for each session
   const [motivationalMessage, setMotivationalMessage] = useState(() => {
@@ -337,6 +337,11 @@ export function ChatInterface() {
         setCanGeneratePlan(savedState.canGeneratePlan ?? false);
         setWebsiteAnalysis(savedState.websiteAnalysis);
         setFinancialAnalysis(savedState.financialAnalysis);
+        // Load gamification state
+        setEarnedBadges(savedState.earnedBadges || []);
+        setEarnedAt(savedState.earnedAt || {});
+        setXp(savedState.xp || 0);
+        setLevel(savedState.level || 1);
       }
     }
   }, [isHydrated, getState]);
@@ -360,6 +365,11 @@ export function ChatInterface() {
         canGeneratePlan,
         websiteAnalysis,
         financialAnalysis,
+        // Save gamification state
+        earnedBadges,
+        earnedAt,
+        xp,
+        level,
       });
     }
   }, [
@@ -374,6 +384,10 @@ export function ChatInterface() {
     canGeneratePlan,
     websiteAnalysis,
     financialAnalysis,
+    earnedBadges,
+    earnedAt,
+    xp,
+    level,
     isHydrated,
     saveState,
   ]);
@@ -381,6 +395,51 @@ export function ChatInterface() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Calculate progress and update badges
+  useEffect(() => {
+    const hasUploadedData = !!(websiteAnalysis || financialAnalysis);
+    const hasGeneratedPlan = !!businessPlanMarkdown;
+
+    const progress = calculateProgress(
+      currentStep,
+      contextSummary,
+      hasUploadedData,
+      hasGeneratedPlan,
+      earnedBadges,
+      earnedAt || {}
+    );
+
+    // Update state if there are changes
+    if (progress.earnedBadges.length !== earnedBadges.length) {
+      setEarnedBadges(progress.earnedBadges);
+      setEarnedAt(progress.earnedAt);
+      setXp(progress.xp);
+      setLevel(progress.level);
+
+      // Show toast for newly earned badges
+      const newBadges = progress.earnedBadges.filter(
+        (badge) => !earnedBadges.includes(badge)
+      );
+      if (newBadges.length > 0) {
+        toast({
+          title: "🎉 Badge Earned!",
+          description: `You earned the ${newBadges
+            .map((b) => BADGES[b].label)
+            .join(", ")} badge!`,
+        });
+      }
+    }
+  }, [
+    currentStep,
+    contextSummary,
+    websiteAnalysis,
+    financialAnalysis,
+    businessPlanMarkdown,
+    earnedBadges,
+    earnedAt,
+    toast,
+  ]);
 
   useEffect(() => {
     if (!isStarted || businessPlanMarkdown || canGeneratePlan) {
@@ -838,6 +897,11 @@ Based on our conversation, your business has significant opportunities for growt
     setIsGeneratingPlan(false);
     setReadyToGeneratePlan(false);
     setCanGeneratePlan(false);
+    // Reset gamification state
+    setEarnedBadges([]);
+    setEarnedAt({} as Record<BadgeType, number>);
+    setXp(0);
+    setLevel(1);
     // Select a new random motivational message for the fresh session
     const messages =
       MOTIVATIONAL_MESSAGES[variant as keyof typeof MOTIVATIONAL_MESSAGES] ||
@@ -883,7 +947,33 @@ Based on our conversation, your business has significant opportunities for growt
           </div>
         </div>
 
-        <Stepper currentStep={isStarted ? currentStep : 0} totalSteps={6} />
+        <Stepper
+          currentStep={isStarted ? currentStep : 0}
+          totalSteps={6}
+          showMilestones={true}
+        />
+
+        {/* Gamification Status */}
+        {isStarted && (
+          <div className="mt-6 p-4 bg-primary/5 rounded-lg border border-primary/20">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-primary">
+                Level {level}
+              </span>
+              <span className="text-xs text-muted-foreground">{xp} XP</span>
+            </div>
+            <div className="w-full bg-muted rounded-full h-2">
+              <div
+                className="bg-primary h-2 rounded-full transition-all duration-500"
+                style={{ width: `${getLevelProgress(xp).progress}%` }}
+              />
+            </div>
+            <div className="text-xs text-muted-foreground mt-1">
+              {earnedBadges.length} badge{earnedBadges.length !== 1 ? "s" : ""}{" "}
+              earned
+            </div>
+          </div>
+        )}
 
         <div className="mt-auto space-y-2">
           <Button
@@ -908,19 +998,46 @@ Based on our conversation, your business has significant opportunities for growt
             )}
             {theme === "dark" ? "Light Mode" : "Dark Mode"}
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setReduceTranslucency(!reduceTranslucency)}
-            className="w-full"
-          >
-            {reduceTranslucency ? (
-              <Eye className="w-4 h-4 mr-2" />
-            ) : (
-              <EyeOff className="w-4 h-4 mr-2" />
-            )}
-            {reduceTranslucency ? "Show Glass" : "Reduce Glass"}
-          </Button>
+
+          {/* Footer */}
+          <div className="mt-4 pt-4 border-t border-border/50">
+            <div className="space-y-2 text-xs text-muted-foreground">
+              <p>
+                Built by{" "}
+                <a
+                  href="https://www.linkedin.com/in/jackyoungcarlson/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:underline text-primary"
+                >
+                  Jack Carlson
+                </a>{" "}
+                and{" "}
+                <a
+                  href="https://www.linkedin.com/in/spastorferrari/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:underline text-primary"
+                >
+                  Sebastian Pastor
+                </a>
+              </p>
+              <div className="space-y-1">
+                <Link
+                  href="/terms"
+                  className="block hover:underline text-primary"
+                >
+                  Terms & Conditions
+                </Link>
+                <Link
+                  href="/privacy"
+                  className="block hover:underline text-primary"
+                >
+                  Privacy Policy
+                </Link>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -974,17 +1091,6 @@ Based on our conversation, your business has significant opportunities for growt
                 <Sun className="w-4 h-4" />
               ) : (
                 <Moon className="w-4 h-4" />
-              )}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setReduceTranslucency(!reduceTranslucency)}
-            >
-              {reduceTranslucency ? (
-                <Eye className="w-4 h-4" />
-              ) : (
-                <EyeOff className="w-4 h-4" />
               )}
             </Button>
           </div>
@@ -1230,23 +1336,10 @@ Based on our conversation, your business has significant opportunities for growt
 
       {/* Right Sidebar - Business Profile */}
       <div className="hidden xl:flex w-80 border-l glass-surface p-6 flex-col sticky top-0 h-screen">
-        <BusinessProfile contextSummary={contextSummary} />
-
-        {/* Success Message - Only show when we have analysis data */}
-        {contextSummary && (
-          <div className="mt-6 border rounded-lg p-4 bg-green-50 dark:bg-green-900/20">
-            <div className="flex items-center gap-2 text-green-700 dark:text-green-400">
-              <CheckCircle className="w-4 h-4" />
-              <span className="text-sm font-medium">
-                Data Successfully Analyzed
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Your business insights will be used to personalize the AI
-              conversation
-            </p>
-          </div>
-        )}
+        <BusinessProfile
+          contextSummary={contextSummary}
+          earnedBadges={earnedBadges}
+        />
       </div>
     </div>
   );

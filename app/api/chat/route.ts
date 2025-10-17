@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { chatCompletion } from "@/lib/nim/client";
+import { chatCompletion, sanitizeQuestion } from "@/lib/nim/client";
 import { reliableChatCompletion, getProviderStatus } from "@/lib/llm/providers";
 import {
   discoverySystemPrompt,
@@ -705,128 +705,40 @@ async function generateBusinessPlan(
 
     const businessPlanPrompt =
       options?.planPrompt ||
-      `You are an expert AI strategy consultant. Create a comprehensive, actionable AI Implementation Plan for this specific business. The plan must be substantially longer and more valuable than typical business plans, with specific vendor recommendations and industry insights.
+      `You are an expert AI strategy consultant. Create a comprehensive, actionable AI Implementation Plan for this specific business.
 
-**FORMATTING REQUIREMENTS:**
-- Use proper markdown formatting with clear headings
-- For tables, use proper markdown table format: | Column | Column |
-- Include specific company names, platforms, and costs
-- Provide concrete numbers and timelines throughout
-- Use bullet points for easy scanning
+**REQUIRED SECTIONS (in this order):**
 
-**PLAN STRUCTURE:**
+## 1. Executive Summary
+Brief analysis of their business, current AI maturity, and key opportunities.
 
-## 1. Executive Summary & Business Analysis
-Provide detailed analysis of their current situation, industry position, and specific AI transformation opportunities based on their exact business context.
+## 2. Phased AI Roadmap (30-90-365 days)
+- Quick Wins (0-30): Specific tools with costs and timeline
+- Core Systems (31-90): Advanced automation recommendations  
+- Advanced AI (90+): Cutting-edge capabilities
 
-## 2. Industry Intelligence
-Analyze their specific industry's AI adoption trends, competitive landscape, and regulatory considerations. Include industry-specific benchmarks and success stories.
+## 3. Specific Technology Recommendations
+Create a vendor comparison table with 4-5 most relevant tools:
 
-## 3. Phased AI Roadmap with Specific Tools
+| Category | Platform | Est. Cost/mo | Setup Time | Key Benefits |
+|----------|----------|-------------|------------|--------------|
+| [Area] | [Platform] | $XXX | X weeks | Benefits |
 
-### Phase 1: Quick Wins (0-30 Days)
-Recommend specific platforms with exact vendor names, costs, and implementation steps.
+## 4. Financial Analysis
+ROI projection: investment, expected returns, payback period.
 
-### Phase 2: Core Systems (31-90 Days)
-Advanced automation with specific software recommendations and integration approaches.
+## 5. 90-Day Implementation Plan
+Week-by-week milestones with measurable outcomes.
 
-### Phase 3: Advanced AI (90+ Days)
-Cutting-edge capabilities with custom development opportunities.
-
-## 4. Specific Technology Recommendations
-
-Create detailed vendor comparison tables:
-
-| Category | Platform | Vendor | Monthly Cost | Setup Time | Key Benefits |
-|----------|----------|---------|--------------|------------|--------------|
-| [Specific category] | [Exact platform name] | [Company] | $X-Y | X weeks | [Specific benefits] |
-
-Include recommendations for:
-- Customer service AI platforms (specific names like Intercom, Zendesk, etc.)
-- Business intelligence tools (specific platforms)
-- Marketing automation systems
-- Process automation tools
-- Industry-specific AI solutions
-
-## 5. Detailed Financial Analysis
-
-Create cost breakdown tables and ROI projections with specific dollar amounts, timelines, and expected returns.
-
-## 6. Week-by-Week Implementation Plan
-Provide specific, actionable tasks for the first 90 days with measurable outcomes.
-
-## 7. Success Metrics & KPIs
-Define specific metrics with baseline, targets, and measurement methods in table format.
-
-**CRITICAL REQUIREMENTS:**
-- Reference their specific business type, challenges, and goals throughout
-- Include actual company names and platforms (Salesforce, HubSpot, Microsoft, Google, etc.)
+**REQUIREMENTS:**
+- Reference their specific business type and challenges throughout
+- Include actual company names and platforms (Salesforce, HubSpot, etc)
 - Provide specific cost ranges and timelines
-- Make recommendations highly specific to their industry and situation
-- Include 2-3x more detailed content than typical business plans
-- Use research findings and citations where available
+- Make recommendations highly specific to their industry
+- Use 2-3 paragraphs of detail per section
 
-**Context Summary JSON:**
-${JSON.stringify(contextSummary, null, 2)}
-
-**Additional Context (may be partially available):**
-Initial Context: ${JSON.stringify(options?.initialContext ?? null, null, 2)}
-Website Analysis: ${JSON.stringify(options?.websiteAnalysis ?? null, null, 2)}
-Financial Analysis: ${JSON.stringify(
-        options?.financialAnalysis ?? null,
-        null,
-        2
-      )}
-
-**Research Intelligence:**
-${
-  options?.researchBrief
-    ? `Research Brief: ${options.researchBrief}`
-    : "No additional research available"
-}
-
-**User-Provided Documents:**
-${
-  options?.attachedFiles && options.attachedFiles.length > 0
-    ? options.attachedFiles
-        .map(
-          (file) =>
-            `\n--- Content from ${file.name} ---\n${file.content}\n--- End of ${file.name} ---`
-        )
-        .join("\n")
-    : "No documents attached"
-}
-
-**Citations and Sources:**
-${
-  options?.citations && options.citations.length > 0
-    ? options.citations
-        .map(
-          (citation, index) =>
-            `[${index + 1}] ${citation.sourceId}${
-              citation.url ? ` (${citation.url})` : ""
-            }${citation.page ? ` - Page ${citation.page}` : ""}`
-        )
-        .join("\n")
-    : "No external citations available"
-}
-
-**Full Conversation History:**
-${messages.map((msg) => `${msg.role}: ${msg.content}`).join("\n\n")}
-
-**CITATION REQUIREMENTS:**
-- When referencing external research or industry data, include citations using [1], [2] format
-- Reference the research brief findings where relevant
-- Include industry statistics and benchmarks from authoritative sources
-- Cite specific tools, platforms, and case studies mentioned in research
-
-**WRITING GUIDELINES:**
-- Use a friendly, encouraging tone and avoid technical jargon
-- The reader should feel confident and excited, not overwhelmed
-- Make advice specific to the information given (refer to their industry or goals directly)
-- If some information was "Not yet specified," assume minimal setup and suggest starting from scratch
-- Be thorough and focus on high-impact recommendations
-- Ensure proper markdown formatting with adequate spacing for readability`;
+**Context:**
+${JSON.stringify(contextSummary, null, 2)}`;
 
     const userContent = `Context Summary JSON:\n${JSON.stringify(
       contextSummary,
@@ -857,6 +769,7 @@ ${messages.map((msg) => `${msg.role}: ${msg.content}`).join("\n\n")}
       temperature: 0.45,
       top_p: 0.95,
       max_tokens: 6000, // Increased for comprehensive plans
+      timeoutMs: 90000, // 90 second timeout for business plan generation
     });
 
     console.log("Business plan response debug:", {
@@ -882,7 +795,7 @@ ${messages.map((msg) => `${msg.role}: ${msg.content}`).join("\n\n")}
     // Enhanced fallback plan with retry CTA
     return `# Your Business Plan
 
-*Note: We encountered a technical issue generating your custom plan. Please try restarting the conversation for a fully personalized plan, or use this template as a starting point.*
+*Note: We encountered a technical issue generating your custom plan. Please try restarting the conversation for a fully personalized plan.*
 
 ## 1. Opportunity Summary
 
@@ -1150,7 +1063,7 @@ export async function POST(req: NextRequest) {
             title: `AI Implementation Plan - ${new Date().toLocaleDateString()}`,
             content: businessPlanMarkdown,
             planLength: businessPlanMarkdown.length,
-            generationTime: Date.now(), // This should be calculated properly
+            generationTime: Math.floor(Date.now() / 1000), // Convert to seconds (32-bit safe)
             modelUsed: planModel,
             planHighlights: Array.from(
               new Set(
@@ -1287,10 +1200,34 @@ Based on our conversation, your business has significant opportunities for growt
 
       // Add context information to system prompt
       if (
+        additionalContext.initialContext ||
         additionalContext.websiteAnalysis ||
         additionalContext.financialAnalysis
       ) {
         systemPrompt += "\n\nAdditional Context Available:\n";
+
+        if (additionalContext.initialContext) {
+          systemPrompt += `\nInitial Business Context:\n`;
+          const ctx = additionalContext.initialContext;
+          if (ctx.businessType) {
+            systemPrompt += `- Business Type: ${ctx.businessType}\n`;
+          }
+          if (ctx.painPoints) {
+            systemPrompt += `- Current Challenges: ${ctx.painPoints}\n`;
+          }
+          if (ctx.goals) {
+            systemPrompt += `- Goals: ${ctx.goals}\n`;
+          }
+          if (ctx.priorTechUse) {
+            systemPrompt += `- Current Tools: ${ctx.priorTechUse}\n`;
+          }
+          if (ctx.dataAvailable) {
+            systemPrompt += `- Available Data: ${ctx.dataAvailable}\n`;
+          }
+          if (ctx.growthIntent) {
+            systemPrompt += `- Growth Plans: ${ctx.growthIntent}\n`;
+          }
+        }
 
         if (additionalContext.websiteAnalysis) {
           systemPrompt += `\nWebsite Analysis:\n`;
@@ -1337,7 +1274,7 @@ Based on our conversation, your business has significant opportunities for growt
           }\n`;
         }
 
-        systemPrompt += `\nUse this context to personalize your questions and provide more relevant insights. Reference specific details when appropriate.`;
+        systemPrompt += `\n\nCRITICAL: Use this business context to personalize your questions. Reference their specific business type, industry, and any details provided. Make your questions relevant to their actual business, not generic. For example, if they're a car auction platform, ask about auction processes, not generic metrics.`;
       }
 
       console.log("Making request to NIM for conversation...");
@@ -1370,118 +1307,112 @@ Based on our conversation, your business has significant opportunities for growt
 
       const stepContextDetails = extractContextDetails(initialContext);
 
-      const MAX_GUARD_RETRIES = 2;
+      // Single LLM call per step; skip retries and use local fallback
       let aiMessage: string | undefined;
-      let violation: StepDisciplineViolation | null = null;
-      let guardrailNote = "";
+      const tokenLimit =
+        effectiveStep === 6 ? 800 : effectiveStep === 5 ? 600 : 500;
 
-      for (let attempt = 0; attempt <= MAX_GUARD_RETRIES; attempt++) {
-        const systemPromptWithGuard = guardrailNote
-          ? `${systemPrompt}\n\n${guardrailNote}`
-          : systemPrompt;
+      try {
+        const res = await reliableChatCompletion({
+          messages: [{ role: "system", content: systemPrompt }, ...messages],
+          model: intakeModel,
+          temperature: 0.3,
+          top_p: 0.9,
+          max_tokens: tokenLimit,
+        });
+        // Use reasoning_content if content is truncated (less than 50 chars) and reasoning_content exists
+        let rawMessage = res.content || "";
+        if (rawMessage.length < 50 && (res as any).reasoning_content) {
+          console.log(
+            `⚠️ Content truncated (${
+              rawMessage.length
+            } chars), using reasoning_content (${
+              (res as any).reasoning_content.length
+            } chars)`
+          );
+          rawMessage = (res as any).reasoning_content;
+        }
+        aiMessage = rawMessage;
 
-        try {
-          // Increase token limit for final question (step 5) and summary step (step 6)
-          const tokenLimit =
-            effectiveStep === 6 ? 800 : effectiveStep === 5 ? 600 : 300;
+        // Sanitize and extract the question
+        aiMessage = sanitizeQuestion(aiMessage, effectiveStep);
 
-          const res = await reliableChatCompletion({
-            messages: [
-              { role: "system", content: systemPromptWithGuard },
-              ...messages,
-            ],
-            model: intakeModel,
-            temperature: 0.3,
-            top_p: 0.9,
-            max_tokens: tokenLimit,
-          });
-          aiMessage = res.content;
-        } catch (nimError: any) {
-          console.error("NIM chat error:", nimError);
-
-          if (nimError.status === 404) {
-            console.log(
-              `Model ${intakeModel} not found, trying fallback to default model`
-            );
-            try {
-              const fallbackModel =
-                process.env.LLM_DEFAULT_MODEL ||
-                "nvidia/llama-3.1-nemotron-ultra-253b-v1";
-              const fallbackTokenLimit =
-                effectiveStep === 6 ? 800 : effectiveStep === 5 ? 600 : 300;
-              const res = await chatCompletion({
-                messages: [
-                  { role: "system", content: systemPromptWithGuard },
-                  ...messages,
-                ],
-                model: fallbackModel,
-                temperature: 0.3,
-                top_p: 0.9,
-                max_tokens: fallbackTokenLimit,
-              });
-              aiMessage = res.content;
-              console.log(`Successfully used fallback model: ${fallbackModel}`);
-            } catch (fallbackError: any) {
-              console.error("Fallback model also failed:", fallbackError);
-              throw fallbackError;
-            }
-          } else if (nimError.retryable) {
-            const fallbackMessage = `I'm experiencing some technical difficulties with our AI service right now. The system is temporarily unavailable, but I can still help you with basic questions.
-
-Could you please try again in a moment? The issue should resolve itself shortly.`;
-
-            // Save user message to database
-            const lastUserMessage = messages[messages.length - 1];
-            if (lastUserMessage && lastUserMessage.role === "user") {
-              await db.saveMessage(
-                lastUserMessage.role,
-                lastUserMessage.content,
-                {
-                  stepNumber: effectiveStep,
-                }
-              );
-            }
-
-            // Save assistant fallback response to database
-            await db.saveMessage("assistant", fallbackMessage, {
-              stepNumber: effectiveStep,
-              modelUsed: "fallback",
-            });
-
-            return NextResponse.json({
-              message: fallbackMessage,
-              fallback: true,
-              contextSummary: null,
-            });
-          } else {
-            throw nimError;
+        // Validate: must have a question header and non-empty content
+        // More lenient check - accept Question N: with variations (extra colons, spaces, etc)
+        // Skip strict validation for step 6 since it generates a summary, not a question
+        let validationFailed = false;
+        if (effectiveStep === 6) {
+          // For step 6, just check for non-empty content (summary format is valid)
+          if (!aiMessage || aiMessage.trim().length < 20) {
+            validationFailed = true;
+          }
+        } else {
+          // For steps 1-5, require Question N: header
+          const hasQuestionHeader = new RegExp(
+            `Question\\s+${effectiveStep}:\\s*`,
+            "i"
+          ).test(aiMessage);
+          const isNonEmpty = aiMessage.trim().length > 20;
+          if (!hasQuestionHeader || !isNonEmpty) {
+            validationFailed = true;
           }
         }
 
-        if (!aiMessage) {
-          throw new Error("No response from NVIDIA API");
+        if (validationFailed) {
+          const reason = !aiMessage
+            ? "reasoning-only response"
+            : "invalid format";
+          console.warn(
+            `Response validation failed for step ${effectiveStep} (${reason}); using fallback`
+          );
+
+          // For step 6, regenerate context from latest conversation to get updated goals
+          let fallbackContext = stepContextDetails;
+          if (effectiveStep === 6) {
+            const updatedContextSummary = await generateContextSummary(
+              messages,
+              {
+                initialContext,
+                websiteAnalysis,
+                financialAnalysis,
+              }
+            );
+            if (updatedContextSummary) {
+              fallbackContext = extractContextDetails(updatedContextSummary);
+            }
+          }
+
+          aiMessage = buildFallbackMessage(effectiveStep, fallbackContext);
+        }
+      } catch (nimError: any) {
+        console.error("Chat API error:", nimError);
+        console.warn(`Using fallback for step ${effectiveStep}`);
+
+        // For step 6, regenerate context from latest conversation to get updated goals
+        let fallbackContext = stepContextDetails;
+        if (effectiveStep === 6) {
+          const updatedContextSummary = await generateContextSummary(messages, {
+            initialContext,
+            websiteAnalysis,
+            financialAnalysis,
+          });
+          if (updatedContextSummary) {
+            fallbackContext = extractContextDetails(updatedContextSummary);
+          }
         }
 
-        violation = detectStepViolation(effectiveStep, aiMessage);
-        if (!violation) {
-          break;
-        }
-
-        console.warn(
-          `Guardrail triggered for step ${effectiveStep} (attempt ${
-            attempt + 1
-          }): ${violation}`
-        );
-        guardrailNote = buildGuardrailReminder(effectiveStep, violation);
-        aiMessage = undefined;
+        aiMessage = buildFallbackMessage(effectiveStep, fallbackContext);
       }
 
       if (!aiMessage) {
-        console.warn(
-          `Guardrail fallback engaged for step ${effectiveStep}; using templated prompt.`
-        );
+        console.error("Failed to generate response for step", effectiveStep);
         aiMessage = buildFallbackMessage(effectiveStep, stepContextDetails);
       }
+
+      // Log concise info: step, path, sanitized length
+      console.log(
+        `[STEP ${effectiveStep}] Generated response (${aiMessage.length} chars)`
+      );
 
       // Save user message to database
       const lastUserMessage = messages[messages.length - 1];

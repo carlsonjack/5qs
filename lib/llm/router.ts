@@ -34,8 +34,8 @@ export function chooseModel({
 
   if (phase === "intake") {
     if (userFlags.costMode) return costModel;
-    // Use fast model for intake to improve response time
-    return ENV.FAST;
+    // Use ultra model for intake to avoid <think> tag issues
+    return ENV.DEFAULT;
   }
 
   if (phase === "plan") {

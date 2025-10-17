@@ -26,6 +26,7 @@ export interface ChatCompletionParams {
   top_p?: number;
   max_tokens?: number;
   guided_json?: Record<string, unknown>;
+  timeoutMs?: number; // Optional timeout in milliseconds
 }
 
 export interface ChatCompletionResult {
@@ -50,17 +51,17 @@ const PROVIDERS: Record<string, AIProvider> = {
     name: "NVIDIA NIM Fallback",
     priority: 2,
     isAvailable: true,
-    healthCheckInterval: 300000, // 5 minutes // 1 minute
+    healthCheckInterval: 300000, // 5 minutes
   },
   openai: {
     name: "OpenAI GPT-4",
-    priority: 3,
-    isAvailable: !!process.env.OPENAI_API_KEY,
+    priority: 99, // Deprioritized - no longer actively used
+    isAvailable: false, // Disabled by default
     healthCheckInterval: 300000, // 5 minutes
   },
   anthropic: {
     name: "Anthropic Claude",
-    priority: 4,
+    priority: 3,
     isAvailable: !!process.env.ANTHROPIC_API_KEY,
     healthCheckInterval: 300000, // 5 minutes
   },

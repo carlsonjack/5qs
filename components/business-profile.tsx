@@ -8,6 +8,8 @@ import {
   Laptop,
   TrendingUp,
 } from "lucide-react";
+import { BadgeCollection } from "./badge-display";
+import { BadgeType } from "@/lib/gamification/badges";
 
 interface ContextSummary {
   businessType: string;
@@ -20,9 +22,13 @@ interface ContextSummary {
 
 interface BusinessProfileProps {
   contextSummary: ContextSummary | null;
+  earnedBadges?: BadgeType[];
 }
 
-export function BusinessProfile({ contextSummary }: BusinessProfileProps) {
+export function BusinessProfile({
+  contextSummary,
+  earnedBadges = [],
+}: BusinessProfileProps) {
   const fields = [
     {
       key: "businessType",
@@ -104,6 +110,18 @@ export function BusinessProfile({ contextSummary }: BusinessProfileProps) {
             </div>
           );
         })}
+
+        {/* Badges section below profile fields */}
+        {earnedBadges.length > 0 && (
+          <div className="pt-4 border-t mt-4">
+            <div className="flex flex-col gap-2">
+              <p className="text-sm font-medium text-muted-foreground">
+                Achievements
+              </p>
+              <BadgeCollection badges={earnedBadges} size="sm" />
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

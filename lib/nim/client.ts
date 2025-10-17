@@ -25,14 +25,14 @@ type ChatMessage = {
 
 export interface ChatCompletionParams {
   messages: ChatMessage[];
-  model: string;
+  model?: string;
   temperature?: number;
   top_p?: number;
   max_tokens?: number;
-  stream?: boolean;
   nvext?: {
     guided_json?: Record<string, unknown>;
   };
+  timeoutMs?: number; // Optional timeout in milliseconds
 }
 
 export interface ChatCompletionResult {
@@ -123,7 +123,8 @@ function redact(value: unknown): unknown {
 async function doFetch(
   url: string,
   init: RequestInit,
-  maxRetries = 2
+  maxRetries = 2,
+  timeoutMs = 30000
 ): Promise<{ res: Response; requestId?: string; startedAt: number }> {
   let attempt = 0;
   let lastError: any = null;
@@ -132,8 +133,9 @@ async function doFetch(
   while (attempt <= maxRetries) {
     try {
       // Add timeout to prevent extremely long waits
+      // 30s for Q&A, 90s for business plan generation
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
       const res = await fetch(url, { ...init, signal: controller.signal });
       clearTimeout(timeoutId);
@@ -157,9 +159,11 @@ async function doFetch(
       // Handle timeout specifically
       if (err instanceof Error && err.name === "AbortError") {
         console.error(
-          `Request timeout after 30 seconds (attempt ${attempt + 1})`
+          `Request timeout after ${timeoutMs / 1000} seconds (attempt ${
+            attempt + 1
+          })`
         );
-        throw new Error("Request timeout - please try again");
+        throw new Error(`Request timeout - please try again`);
       }
 
       const backoff = jitter(300 * Math.pow(2, attempt));
@@ -175,12 +179,12 @@ export async function chatCompletion(
 ): Promise<ChatCompletionResult> {
   const isGuidedJson = !!(params.nvext && params.nvext.guided_json);
   const body: any = {
-    model: params.model,
+    model: params.model || "nvidia/llama-3.1-nemotron-ultra-253b-v1",
     messages: params.messages,
     temperature: params.temperature ?? 0.4,
     top_p: params.top_p ?? 0.95,
     max_tokens: params.max_tokens ?? 4096, // Increased default to prevent truncation
-    stream: params.stream ?? false,
+    stream: false,
   };
   if (isGuidedJson && params.nvext) {
     body.nvext = { guided_json: params.nvext.guided_json };
@@ -196,7 +200,12 @@ export async function chatCompletion(
     body: JSON.stringify(body),
   };
 
-  const { res, requestId, startedAt } = await doFetch(CHAT_URL, init);
+  const { res, requestId, startedAt } = await doFetch(
+    CHAT_URL,
+    init,
+    2,
+    params.timeoutMs ?? 30000
+  );
   const latencyMs = Date.now() - startedAt;
   const text = await res.text();
   let data: any = null;
@@ -300,8 +309,13 @@ export async function chatCompletion(
 
   if (message) {
     pushCandidate(message.content);
-    // For guided JSON mode, check reasoning_content as NIM may put the response there
-    if (isGuidedJson) {
+    // Check reasoning_content if content is null OR if content is just a header (NVIDIA may put full response there)
+    if (
+      !message.content ||
+      (message.content &&
+        message.content.length < 50 &&
+        (message as any).reasoning_content)
+    ) {
       pushCandidate((message as any).reasoning_content);
     }
     // Skip notes to prevent internal thinking from showing
@@ -310,8 +324,13 @@ export async function chatCompletion(
 
   pushCandidate(choice?.text);
   pushCandidate(choice?.content);
-  // For guided JSON mode, check reasoning_content as NIM may put the response there
-  if (isGuidedJson) {
+  // Check reasoning_content if content is null OR if content is just a header (NVIDIA may put full response there)
+  if (
+    !choice?.content ||
+    (choice?.content &&
+      choice.content.length < 50 &&
+      (choice as any)?.reasoning_content)
+  ) {
     pushCandidate((choice as any)?.reasoning_content);
   }
 
@@ -328,6 +347,29 @@ export async function chatCompletion(
   }
 
   let content = candidates[0] || "";
+
+  // Fallback: if all filtering resulted in empty content, use raw message content
+  if (!content && message?.content) {
+    console.warn("⚠️ All content filtered out, using raw message content");
+    content = message.content;
+
+    // If content is only <think> tags, generate a simple question based on step
+    if (content.includes("<think>") && !content.includes("**Question")) {
+      console.warn(
+        "⚠️ Response contains only reasoning content, generating fallback question"
+      );
+      const stepNumber = 1; // Default to step 1 if we can't determine
+      const topics = [
+        "Business Overview",
+        "Pain Points",
+        "Customers & Reach",
+        "Operations & Data",
+        "Goals & Vision",
+      ];
+      const topic = topics[stepNumber - 1] || "Business Overview";
+      content = `**Question ${stepNumber}: ${topic}**\n\nCould you share more about your business and current challenges?`;
+    }
+  }
 
   // Filter out reasoning content that appears in the main response
   if (content) {
@@ -390,13 +432,69 @@ export async function chatCompletion(
         ""
       )
       .replace(/\(Note: [^)]*\)/g, "") // Remove any note patterns
+      .replace(/\(\*Assuming this is Question \d+[^)]*\)/g, "") // Remove assumption patterns
+      .replace(/\(\*[^)]*assuming[^)]*\)/gi, "") // Remove any assumption patterns
+      .replace(/\(\*[^)]*please provide[^)]*\)/gi, "") // Remove instruction patterns
+      .replace(/\(\*[^)]*begin the discovery[^)]*\)/gi, "") // Remove discovery patterns
+      .replace(/\(\*[^)]*\)/g, "") // Remove any remaining parenthetical asterisk patterns
+      .replace(/\(Assuming this is Question \d+\)/g, "") // Remove assumption patterns without asterisk
+      .replace(/\(Assuming[^)]*\)/gi, "") // Remove any assumption patterns
+      .replace(/^\s*\(Assuming[^)]*\)\s*$/gm, "") // Remove standalone assumption lines
+      .replace(/^\s*\(\*[^)]*\)\s*$/gm, "") // Remove standalone parenthetical asterisk lines
       .trim();
 
-    // Remove any content before the first **Question** or **Step** marker
-    const questionMatch = content.match(/(\*\*Question \d+:|Question \d+:)/);
-    if (questionMatch) {
-      content = content.substring(content.indexOf(questionMatch[0])).trim();
+    // Extract only the first question, stopping at reasoning content
+    // Try both bold and plain question formats - be greedy and capture full content
+    let questionMatch = content.match(
+      /(\*\*Question \d+[^*]*\*\*[\s\S]*?)(?=Wait,|However,|But according|Revised Question|\*\*Revised|\*\*Note|\*\*END|\*\*\[)/
+    );
+
+    if (!questionMatch) {
+      // Fallback: try plain Question format without bold markers - capture until reasoning markers
+      questionMatch = content.match(
+        /(Question \d+[^\n]*[\s\S]*?)(?=Wait,|However,|But according|Revised Question|\*\*Revised|\*\*Note|\*\*END|\*\*\[)/
+      );
     }
+
+    if (questionMatch) {
+      content = questionMatch[1].trim();
+    } else {
+      // Last resort: take everything after question header until obvious reasoning markers
+      const headerMatch = content.match(/Question \d+[^\n]*/);
+      if (headerMatch) {
+        const afterHeader = content.substring(
+          headerMatch.index + headerMatch[0].length
+        );
+        const reasoningMarkers = [
+          "Wait,",
+          "However,",
+          "But according",
+          "Revised Question",
+          "**Revised",
+          "**Note",
+          "**END",
+          "**[",
+        ];
+        let endIndex = afterHeader.length;
+
+        for (const marker of reasoningMarkers) {
+          const markerIndex = afterHeader.indexOf(marker);
+          if (markerIndex !== -1 && markerIndex < endIndex) {
+            endIndex = markerIndex;
+          }
+        }
+
+        content = headerMatch[0] + afterHeader.substring(0, endIndex).trim();
+      }
+    }
+
+    // Clean up any remaining reasoning patterns
+    content = content
+      .replace(/\*\*\(Assuming[^)]*\)\*\*/g, "")
+      .replace(/\(Assuming[^)]*\)/g, "")
+      .replace(/\*\*\(Current Step[^)]*\)\*\*/g, "")
+      .replace(/\*Wait for your response\.\*/g, "")
+      .trim();
 
     // Fix malformed markdown (extra asterisks)
     // Remove trailing asterisks after colons in question headers
@@ -449,11 +547,32 @@ export async function chatCompletion(
       .replace(/Awaiting your detailed response.*$/gm, "") // Remove "Awaiting your detailed response" patterns
       .replace(/Awaiting your response.*$/gm, "") // Remove "Awaiting your response" patterns
 
-      // Remove duplicate question headers
+      // Remove reasoning notes and context explanations
+      .replace(/Note:.*$/gm, "") // Remove "Note:" patterns
+      .replace(/As per your current context.*$/gm, "") // Remove "As per your current context" patterns
+      .replace(/given the context provided.*$/gm, "") // Remove "given the context provided" patterns
+      .replace(/I'll proceed with.*$/gm, "") // Remove "I'll proceed with" patterns
+      // REMOVED: .replace(/Considering your.*$/gm, "") // This was removing legitimate question content!
+
+      // Remove duplicate question headers and content
       .replace(/Question \d+:.*Question \d+:.*$/gm, (match) => {
         const lines = match.split("\n");
         const firstQuestion = lines.find((line) => line.includes("Question"));
         return firstQuestion || match;
+      })
+
+      // Remove duplicate questions with same number
+      .replace(/(Question \d+:.*?)(?=\nQuestion \d+:|$)/g, (match) => {
+        const lines = match.split("\n");
+        const questionLines = lines.filter((line) => line.includes("Question"));
+        if (questionLines.length > 1) {
+          // Keep only the first question and its content
+          const firstQuestionIndex = lines.findIndex((line) =>
+            line.includes("Question")
+          );
+          return lines.slice(firstQuestionIndex).join("\n");
+        }
+        return match;
       })
 
       .trim();
@@ -515,7 +634,12 @@ export async function chatCompletion(
           line.includes("Follow-Up (Optional for Clarity):") ||
           line.includes("**Follow-Up (Optional for Clarity)**:") ||
           line.includes("Awaiting your detailed response") ||
-          line.includes("Awaiting your response"))
+          line.includes("Awaiting your response") ||
+          line.includes("Note:") ||
+          line.includes("As per your current context") ||
+          line.includes("given the context provided") ||
+          line.includes("I'll proceed with") ||
+          line.includes("Considering your"))
       ) {
         continue;
       }
@@ -581,6 +705,9 @@ export async function chatCompletion(
       "No content found, trying to extract from full response:",
       dataStr.substring(0, 500)
     );
+    console.log("Candidates that were filtered out:", candidates);
+    console.log("Original message content:", message?.content);
+    console.log("Original choice text:", choice?.text);
   }
 
   const tokensIn = data?.usage?.prompt_tokens ?? undefined;
@@ -603,11 +730,11 @@ export async function chatCompletion(
   );
 
   // Metrics logging
-  logMetrics("chat", params.model, latencyMs, tokensIn, tokensOut, true);
+  logMetrics("chat", body.model, latencyMs, tokensIn, tokensOut, true);
 
   return {
     content,
-    model: params.model,
+    model: body.model,
     requestId,
     status: res.status,
     headers: Object.fromEntries(res.headers.entries()),
@@ -707,6 +834,139 @@ export async function rerank(params: RerankParams): Promise<RerankResult> {
     model: params.model,
     requestId: "mock-rerank",
   };
+}
+
+/**
+ * Sanitize question response: extract first question block, remove reasoning
+ */
+export function sanitizeQuestion(raw: string, step: number): string {
+  if (!raw || typeof raw !== "string") return "";
+
+  let content = raw.trim();
+
+  // Check if response is reasoning-only (CoT-only) - only <think> blocks, no question content
+  const hasThink = content.includes("<think>");
+  const hasBoldQuestion = content.includes("**Question");
+  const hasQuestion = content.includes("Question");
+
+  // Only trigger fallback if it's ONLY <think> content with no question markers
+  const isReasoningOnly = hasThink && !hasBoldQuestion && !hasQuestion;
+
+  if (isReasoningOnly) {
+    console.warn(
+      `⚠️ Reasoning-only response detected for step ${step}; triggering fallback`
+    );
+    return ""; // Trigger fallback immediately
+  }
+
+  // 1) Strip <think> blocks entirely
+  content = content.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+  content = content.replace(/<think>[\s\S]*$/g, "").trim();
+
+  // 2) Remove lines starting with ( or *( (notes/assumptions)
+  const lines = content.split("\n");
+  const filtered = lines.filter((line) => {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("(") || trimmed.startsWith("*(")) return false;
+    if (
+      trimmed.includes("Note for Assistant") ||
+      trimmed.includes("END OF RESPONSE") ||
+      trimmed.includes("[SYSTEM MESSAGE]") ||
+      trimmed.includes("[TO BE PROVIDED")
+    ) {
+      return false;
+    }
+    return true;
+  });
+  content = filtered.join("\n").trim();
+
+  // 3) Extract first question block - be greedy and capture everything until clear end markers
+  let extracted = null;
+
+  // Primary pattern: **Question format with greedy matching until clear boundaries
+  const questionPattern =
+    /\*\*Question\s+\d+[\s\S]*?(?=\n\*\*Question|\n\n(?:However|But|Wait|Revised|Yet|Though|Note|Question|Waiting|\[|---)|$)/i;
+  const match = content.match(questionPattern);
+
+  if (match && match[0].length > 50) {
+    extracted = match[0].trim();
+  } else {
+    // Fallback: plain Question format - be more aggressive about capturing content
+    const fallbackPattern =
+      /Question\s+\d+[\s\S]*?(?=\n\n(?:However|But|Wait|Revised|Yet|Though|Note|Question|Waiting|\[|---)|$)/i;
+    const fallbackMatch = content.match(fallbackPattern);
+    if (fallbackMatch && fallbackMatch[0].length > 50) {
+      extracted = fallbackMatch[0].trim();
+    } else {
+      // Emergency fallback: if we have a question header, take everything after it until we hit obvious reasoning markers
+      const headerMatch = content.match(/Question\s+\d+:?\s*/i);
+      if (headerMatch) {
+        const afterHeader = content.substring(
+          headerMatch.index + headerMatch[0].length
+        );
+        // Find the first occurrence of reasoning markers and stop there
+        const reasoningMarkers = [
+          "However",
+          "But",
+          "Wait",
+          "Revised",
+          "Yet",
+          "Though",
+          "Note",
+          "Question",
+          "Waiting",
+          "[",
+          "---",
+        ];
+        let endIndex = afterHeader.length;
+
+        for (const marker of reasoningMarkers) {
+          const markerIndex = afterHeader.indexOf("\n" + marker);
+          if (markerIndex !== -1 && markerIndex < endIndex) {
+            endIndex = markerIndex;
+          }
+        }
+
+        extracted =
+          "Question " + step + ": " + afterHeader.substring(0, endIndex).trim();
+      }
+    }
+  }
+
+  if (extracted && extracted.length > 50) {
+    // Remove any trailing duplicate question headers
+    extracted = extracted.replace(/\n+Question\s+\d+:.*$/i, "");
+    content = extracted.trim();
+  } else {
+    // Last resort: take first 800 chars that contain the question header
+    const headerIndex = content.indexOf("Question");
+    if (headerIndex !== -1) {
+      content = content.substring(headerIndex, headerIndex + 800).trim();
+    }
+  }
+
+  // 4) Normalize header if needed: ensure it's "**Question N:" for this step
+  const headerPattern = /\*\*Question \d+:/;
+  if (headerPattern.test(content)) {
+    const currentStepPattern = new RegExp(`\\*\\*Question ${step}:`);
+    if (!currentStepPattern.test(content)) {
+      // Rewrite header to match current step
+      content = content.replace(/\*\*Question \d+:/, `**Question ${step}:`);
+    }
+  }
+
+  // 5) Remove duplicate Question headers (keep only first)
+  const questionHeaders = content.match(/\*\*Question \d+:/g) || [];
+  if (questionHeaders.length > 1) {
+    const firstHeaderIndex = content.indexOf("**Question");
+    const afterFirstHeader = content.substring(firstHeaderIndex);
+    const secondHeaderIndex = afterFirstHeader.indexOf("**Question", 10);
+    if (secondHeaderIndex > 0) {
+      content = afterFirstHeader.substring(0, secondHeaderIndex).trim();
+    }
+  }
+
+  return content.trim();
 }
 
 export async function textToSpeech(params: TTSParams): Promise<TTSResult> {

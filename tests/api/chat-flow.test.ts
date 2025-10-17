@@ -3,6 +3,7 @@ import { createServer } from "http";
 import { parse } from "url";
 import next from "next";
 import request from "supertest";
+import { sanitizeQuestion } from "@/lib/nim/client";
 
 describe("Chat API Flow Tests", () => {
   let app: any;
@@ -242,6 +243,119 @@ describe("Chat API Flow Tests", () => {
       expect(response.body).toHaveProperty("message");
       // Should still provide a meaningful response
       expect(response.body.message).toBeTruthy();
+    });
+  });
+
+  describe("Response Sanitization Tests", () => {
+    it("should remove <think> tags and reasoning content", () => {
+      const rawResponse = `<think>
+This is my reasoning about what to ask.
+I need to ask question 1 about business overview.
+</think>
+
+**Question 1: Business Overview**
+Could you tell me about your business?`;
+
+      const sanitized = sanitizeQuestion(rawResponse, 1);
+      expect(sanitized).not.toContain("<think>");
+      expect(sanitized).not.toContain("reasoning");
+      expect(sanitized).toContain("**Question 1:");
+    });
+
+    it("should remove Note for Assistant lines", () => {
+      const rawResponse = `**Question 2: Pain Points**
+What are your main challenges?
+
+(Note for Assistant: This is internal guidance, not shown to user)
+(Another internal note here)`;
+
+      const sanitized = sanitizeQuestion(rawResponse, 2);
+      expect(sanitized).not.toContain("Note for Assistant");
+      expect(sanitized).not.toContain("internal");
+      expect(sanitized).toContain("**Question 2:");
+    });
+
+    it("should remove duplicate question headers and keep only first", () => {
+      const rawResponse = `**Question 3: Customers & Reach**
+How do you reach your customers?
+
+Question 3: Customers & Reach (duplicate)
+Another version of the question here.`;
+
+      const sanitized = sanitizeQuestion(rawResponse, 3);
+      const matches = sanitized.match(/Question \d+:/g) || [];
+      expect(matches.length).toBe(1); // Only one question header
+      expect(sanitized).toContain("**Question 3:");
+    });
+
+    it("should normalize question header to current step", () => {
+      const rawResponse = `**Question 5: Some Topic**
+This is question 5 content`;
+
+      const sanitized = sanitizeQuestion(rawResponse, 2);
+      // Should rewrite to Question 2
+      expect(sanitized).toContain("**Question 2:");
+      expect(sanitized).not.toContain("**Question 5:");
+    });
+
+    it("should remove reasoning context like Follow-Up markers", () => {
+      const rawResponse = `Follow-Up Question for Clarification:
+**Question 2: Pain Points**
+What are your challenges?
+
+However, to strictly adhere to instructions...
+(Some internal reasoning)`;
+
+      const sanitized = sanitizeQuestion(rawResponse, 2);
+      expect(sanitized).not.toContain("Follow-Up");
+      expect(sanitized).not.toContain("However");
+      expect(sanitized).not.toContain("(Some internal");
+      expect(sanitized).toContain("**Question 2:");
+    });
+
+    it("should produce valid question format for each step", () => {
+      const topics = [
+        "Business Overview",
+        "Pain Points",
+        "Customers & Reach",
+        "Operations & Data",
+        "Goals & Vision",
+      ];
+
+      for (let step = 1; step <= 5; step++) {
+        const question = `**Question ${step}: ${
+          topics[step - 1]
+        }**\nCould you provide details about this topic?`;
+        const sanitized = sanitizeQuestion(question, step);
+
+        expect(sanitized).toContain(`**Question ${step}:`);
+        expect(sanitized.trim().split("\n").length).toBeGreaterThanOrEqual(2);
+      }
+    });
+
+    it("should not output empty content for valid questions", () => {
+      const validQuestion = `**Question 1: Business Overview**
+Tell me about your business.`;
+
+      const sanitized = sanitizeQuestion(validQuestion, 1);
+      expect(sanitized.length).toBeGreaterThan(20);
+      expect(sanitized).toContain("**Question 1:");
+    });
+
+    it("should handle mixed reasoning and question formats", () => {
+      const rawResponse = `[Attempting to balance clarity with conciseness...]
+
+**Question 4: Operations & Data**
+What tools and processes do you currently use?
+
+**Note for Internal Processing:** Flag for future reference
+[END OF REASONING]`;
+
+      const sanitized = sanitizeQuestion(rawResponse, 4);
+      expect(sanitized).toContain("**Question 4:");
+      expect(sanitized).not.toContain("Note for Internal");
+      expect(sanitized).not.toContain("[END OF REASONING]");
+      expect(sanitized).not.toContain("Attempting to balance");
     });
   });
 });

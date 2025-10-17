@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { BadgeType } from "@/lib/gamification/badges";
 
 interface ChatMessage {
   content: string;
@@ -20,6 +21,11 @@ interface ChatState {
   readyToGeneratePlan: boolean;
   canGeneratePlan: boolean;
   isContextGatheringComplete: boolean;
+  // Gamification data
+  earnedBadges: BadgeType[];
+  earnedAt: Record<BadgeType, number>;
+  xp: number;
+  level: number;
 }
 
 const STORAGE_KEY = "ai-5q-chat-state";
@@ -82,6 +88,11 @@ export function useChatPersistence() {
     readyToGeneratePlan: false,
     canGeneratePlan: false,
     isContextGatheringComplete: false,
+    // Gamification defaults
+    earnedBadges: [],
+    earnedAt: {},
+    xp: 0,
+    level: 1,
   });
 
   // Initialize on mount

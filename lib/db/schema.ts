@@ -196,7 +196,7 @@ export const businessPlans = pgTable(
     // Plan metadata
     status: planStatusEnum("status").default("generated").notNull(),
     planLength: integer("plan_length"), // Character count
-    generationTime: integer("generation_time"), // milliseconds
+    generationTime: integer("generation_time"), // seconds (Unix timestamp)
 
     // AI generation details
     modelUsed: text("model_used"),
