@@ -112,15 +112,36 @@ function generateBusinessPlanPDF(businessPlan: string, email: string): string {
       format: "a4",
     });
 
-    // Set up PDF styling
-    pdf.setFont("helvetica");
-    pdf.setFontSize(16);
+    // Add logo (if available)
+    try {
+      // Try to add logo - this would need the logo file to be accessible
+      // For now, we'll add a placeholder text logo
+      pdf.setFontSize(20);
+      pdf.setTextColor(118, 185, 0); // Primary green #76B900
+      pdf.text("5Q Strategy", 20, 20);
+      pdf.setTextColor(0, 0, 0); // Reset to black
+    } catch (error) {
+      console.log("Logo not available, using text logo");
+    }
 
-    // Add title
-    pdf.text("AI Business Implementation Plan", 20, 25);
+    // Add header with green accent
+    pdf.setFillColor(118, 185, 0); // Primary green #76B900
+    pdf.rect(0, 25, 210, 8, "F"); // Full width green bar
+    
+    // Add title on green background
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(16);
+    pdf.setTextColor(255, 255, 255); // White text
+    pdf.text("AI Business Implementation Plan", 20, 30);
+    
+    // Reset colors
+    pdf.setTextColor(0, 0, 0);
+    pdf.setFont("helvetica", "normal");
     pdf.setFontSize(12);
-    pdf.text(`Generated for: ${email}`, 20, 35);
-    pdf.text(`Date: ${new Date().toLocaleDateString()}`, 20, 42);
+    
+    // Add details below header
+    pdf.text(`Generated for: ${email}`, 20, 40);
+    pdf.text(`Date: ${new Date().toLocaleDateString()}`, 20, 47);
 
     // Add business plan content
     pdf.setFontSize(12);
@@ -133,6 +154,7 @@ function generateBusinessPlanPDF(businessPlan: string, email: string): string {
     const leftMargin = 20;
     const rightMargin = 20;
     const contentWidth = 170; // A4 width minus margins
+    const minElementHeight = 15; // Minimum space needed for any element
 
     let inTable = false;
     let tableColumns: string[] = [];
@@ -196,13 +218,18 @@ function generateBusinessPlanPDF(businessPlan: string, email: string): string {
             pdf.setFontSize(headerSize);
             pdf.setFont("helvetica", "bold");
 
-            if (yPosition > pageHeight - 15) {
+            // Check if header fits on current page
+            if (yPosition > pageHeight - minElementHeight) {
               pdf.addPage();
               yPosition = 25;
             }
 
+            // Add green accent for headers
+            pdf.setFillColor(240, 249, 230); // Light green background
+            pdf.rect(leftMargin - 2, yPosition - 2, contentWidth + 4, headerSize + 4, "F");
+            
             pdf.text(headerText, leftMargin, yPosition);
-            yPosition += lineHeight + 2; // Reduced spacing
+            yPosition += lineHeight + 8; // More spacing for headers
             pdf.setFontSize(12);
             pdf.setFont("helvetica", "normal");
           } else {
@@ -222,12 +249,15 @@ function generateBusinessPlanPDF(businessPlan: string, email: string): string {
             }
 
             const wrappedLines = pdf.splitTextToSize(cleanLine, contentWidth);
+            const textHeight = wrappedLines.length * lineHeight;
+
+            // Check if text fits on current page
+            if (yPosition + textHeight > pageHeight) {
+              pdf.addPage();
+              yPosition = 25;
+            }
 
             wrappedLines.forEach((wrappedLine: string) => {
-              if (yPosition > pageHeight) {
-                pdf.addPage();
-                yPosition = 25;
-              }
               pdf.text(wrappedLine, leftMargin, yPosition);
               yPosition += lineHeight;
             });
@@ -251,6 +281,25 @@ function generateBusinessPlanPDF(businessPlan: string, email: string): string {
         lineHeight,
         pageHeight
       );
+    }
+
+    // Add footer to all pages
+    const pageCount = pdf.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      pdf.setPage(i);
+      
+      // Add green footer bar
+      pdf.setFillColor(118, 185, 0); // Primary green #76B900
+      pdf.rect(0, 290, 210, 7, "F");
+      
+      // Add footer text
+      pdf.setFontSize(8);
+      pdf.setTextColor(255, 255, 255); // White text
+      pdf.text("5Q Strategy - AI Implementation Specialists", 20, 295);
+      pdf.text(`Page ${i} of ${pageCount}`, 170, 295);
+      
+      // Reset colors
+      pdf.setTextColor(0, 0, 0);
     }
 
     // Return as base64 string
@@ -399,8 +448,8 @@ function renderTableImproved(
   const totalRows = rows.length;
   const tableHeight = headerHeight + totalRows * rowHeight;
 
-  // Check if table fits on current page
-  if (yPosition + tableHeight > pageHeight) {
+  // Check if table fits on current page - add buffer for safety
+  if (yPosition + tableHeight + 10 > pageHeight) {
     pdf.addPage();
     yPosition = 25;
   }
@@ -413,12 +462,12 @@ function renderTableImproved(
   columns.forEach((column, index) => {
     const columnWidth = columnWidths[index];
     
-    // Draw header cell background
-    pdf.setFillColor(245, 245, 245);
+    // Draw header cell background with green accent
+    pdf.setFillColor(240, 249, 230); // Light green background
     pdf.rect(xPosition, yPosition, columnWidth, headerHeight, "F");
 
-    // Draw header border
-    pdf.setDrawColor(221, 221, 221);
+    // Draw header border with green color
+    pdf.setDrawColor(118, 185, 0); // Primary green #76B900
     pdf.rect(xPosition, yPosition, columnWidth, headerHeight);
 
     // Draw header text with word wrapping
@@ -439,8 +488,8 @@ function renderTableImproved(
     row.forEach((cell, cellIndex) => {
       const columnWidth = columnWidths[cellIndex];
       
-      // Draw cell border
-      pdf.setDrawColor(221, 221, 221);
+      // Draw cell border with subtle green tint
+      pdf.setDrawColor(200, 220, 180); // Light green border
       pdf.rect(xPosition, yPosition, columnWidth, rowHeight);
 
       // Draw cell content with word wrapping
