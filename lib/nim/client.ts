@@ -452,8 +452,24 @@ export async function chatCompletion(
     if (!questionMatch) {
       // Fallback: try plain Question format without bold markers - capture until reasoning markers
       questionMatch = content.match(
-        /(Question \d+[^\n]*[\s\S]*?)(?=Wait,|However,|But according|Revised Question|\*\*Revised|\*\*Note|\*\*END|\*\*\[)/
+        /(Question \d+[^\n]*\n[\s\S]*?)(?=Wait,|However,|But according|Revised Question|\*\*Revised|\*\*Note|\*\*END|\*\*\[)/
       );
+
+      // If no newline found, try without requiring newline but ensure proper spacing
+      if (!questionMatch) {
+        questionMatch = content.match(
+          /(Question \d+[^\n]*[\s\S]*?)(?=Wait,|However,|But according|Revised Question|\*\*Revised|\*\*Note|\*\*END|\*\*\[)/
+        );
+        if (questionMatch) {
+          // Ensure there's a space after the colon if missing
+          questionMatch[1] = questionMatch[1].replace(
+            /(Question \d+:[A-Z])/,
+            (match) => {
+              return match.replace(/(Question \d+:)([A-Z])/, "$1 $2");
+            }
+          );
+        }
+      }
     }
 
     if (questionMatch) {
@@ -461,7 +477,7 @@ export async function chatCompletion(
     } else {
       // Last resort: take everything after question header until obvious reasoning markers
       const headerMatch = content.match(/Question \d+[^\n]*/);
-      if (headerMatch) {
+      if (headerMatch && headerMatch.index !== undefined) {
         const afterHeader = content.substring(
           headerMatch.index + headerMatch[0].length
         );
@@ -495,6 +511,8 @@ export async function chatCompletion(
       .replace(/\*\*\(Current Step[^)]*\)\*\*/g, "")
       .replace(/\*Wait for your response\.\*/g, "")
       .trim();
+
+    // Spacing fixes are now handled in sanitizeQuestion function
 
     // Fix malformed markdown (extra asterisks)
     // Remove trailing asterisks after colons in question headers
@@ -900,7 +918,7 @@ export function sanitizeQuestion(raw: string, step: number): string {
     } else {
       // Emergency fallback: if we have a question header, take everything after it until we hit obvious reasoning markers
       const headerMatch = content.match(/Question\s+\d+:?\s*/i);
-      if (headerMatch) {
+      if (headerMatch && headerMatch.index !== undefined) {
         const afterHeader = content.substring(
           headerMatch.index + headerMatch[0].length
         );
@@ -953,6 +971,12 @@ export function sanitizeQuestion(raw: string, step: number): string {
       // Rewrite header to match current step
       content = content.replace(/\*\*Question \d+:/, `**Question ${step}:`);
     }
+  } else {
+    // Ensure header is bold - convert plain "Question N:" to "**Question N:**"
+    const plainHeaderPattern = new RegExp(`Question\\s+${step}:`, "i");
+    if (plainHeaderPattern.test(content)) {
+      content = content.replace(plainHeaderPattern, `**Question ${step}:**`);
+    }
   }
 
   // 5) Remove duplicate Question headers (keep only first)
@@ -964,6 +988,56 @@ export function sanitizeQuestion(raw: string, step: number): string {
     if (secondHeaderIndex > 0) {
       content = afterFirstHeader.substring(0, secondHeaderIndex).trim();
     }
+  }
+
+  // 6) Fix spacing issues after question headers - look for word followed by word without space
+  content = content.replace(/([A-Za-z])([A-Z][a-z])/g, (match, p1, p2) => {
+    // Only fix if it looks like a question header issue (word followed by capitalized word)
+    if (
+      match.includes("Question") ||
+      match.includes("Overview") ||
+      match.includes("Points") ||
+      match.includes("Reach")
+    ) {
+      return p1 + " " + p2;
+    }
+    return match;
+  });
+
+  // Also fix specific cases like "PointsGiven" -> "Points Given"
+  content = content.replace(/([A-Z][a-z]+)([A-Z][a-z]+)/g, (match, p1, p2) => {
+    if (
+      match.includes("ReachHow") ||
+      match.includes("OverviewWhat") ||
+      match.includes("PointsWhat") ||
+      match.includes("PointsGiven") ||
+      match.includes("ReachConsidering")
+    ) {
+      return p1 + " " + p2;
+    }
+    return match;
+  });
+
+  // 7) Add line break after question topic for better readability
+  // Look for question words that typically start the question body
+  const questionWords = [
+    "What",
+    "How",
+    "Who",
+    "Where",
+    "When",
+    "Why",
+    "Which",
+    "With",
+    "Looking",
+  ];
+
+  for (const word of questionWords) {
+    const pattern = new RegExp(
+      `(\\*\\*Question \\d+:\\*\\*[^\\n]*?)(\\s+${word})`,
+      "g"
+    );
+    content = content.replace(pattern, `$1\n\n$2`);
   }
 
   return content.trim();

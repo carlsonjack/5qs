@@ -31,14 +31,12 @@ const GUIDED_JSON_SCHEMA = {
     score: { type: "number" },
   },
   required: [
-    "budgetBand",
     "authority",
     "urgency",
     "needClarity",
     "dataReadiness",
     "stackMaturity",
     "complexity",
-    "score",
   ],
   additionalProperties: false,
 } as const;
@@ -88,7 +86,23 @@ Materials:
   });
 
   const first = resp.content || "{}";
-  const parsed = LeadSignalsZ.safeParse(JSON.parse(first));
+  // Strip markdown code fences if present
+  const cleanedContent = first
+    .replace(/^```(?:json)?\s*\n?/gm, "")
+    .replace(/\n?```\s*$/gm, "")
+    .trim();
+  const jsonData = JSON.parse(cleanedContent);
+  const parsed = LeadSignalsZ.safeParse({
+    ...jsonData,
+    budgetBand: jsonData.budgetBand || "Not specified",
+    score: jsonData.score || 50,
+    authority: jsonData.authority || "Unknown",
+    urgency: jsonData.urgency || "Unknown",
+    needClarity: jsonData.needClarity || "Vague",
+    dataReadiness: jsonData.dataReadiness || "Low",
+    stackMaturity: jsonData.stackMaturity || "Unknown",
+    complexity: jsonData.complexity || "Med",
+  });
   if (!parsed.success) {
     // single retry with same params
     const retry = await chatCompletion({
@@ -103,7 +117,23 @@ Materials:
       max_tokens: 400,
       nvext: { guided_json: GUIDED_JSON_SCHEMA as any },
     });
-    return LeadSignalsZ.parse(JSON.parse(retry.content || "{}"));
+    const retryContent = retry.content || "{}";
+    const cleanedRetryContent = retryContent
+      .replace(/^```(?:json)?\s*\n?/gm, "")
+      .replace(/\n?```\s*$/gm, "")
+      .trim();
+    const retryData = JSON.parse(cleanedRetryContent);
+    return LeadSignalsZ.parse({
+      ...retryData,
+      budgetBand: retryData.budgetBand || "Not specified",
+      score: retryData.score || 50,
+      authority: retryData.authority || "Unknown",
+      urgency: retryData.urgency || "Unknown",
+      needClarity: retryData.needClarity || "Vague",
+      dataReadiness: retryData.dataReadiness || "Low",
+      stackMaturity: retryData.stackMaturity || "Unknown",
+      complexity: retryData.complexity || "Med",
+    });
   }
   return parsed.data;
 }

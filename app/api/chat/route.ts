@@ -665,9 +665,9 @@ function cleanContextSummary(summary: any): any {
       value = value.replace(/\s+/g, " "); // Normalize whitespace
       value = value.trim();
 
-      // Truncate very long values
-      if (value.length > 300) {
-        value = value.substring(0, 297) + "...";
+      // Truncate very long values (increased limit for better context preservation)
+      if (value.length > 1000) {
+        value = value.substring(0, 997) + "...";
       }
 
       // If value is empty or just correction text, set to default
@@ -788,7 +788,25 @@ ${JSON.stringify(contextSummary, null, 2)}`;
       "Business plan generated successfully, length:",
       res.content.length
     );
-    return res.content;
+
+    // Add Perplexity CTA to the end of the business plan
+    const perplexityCTA = `
+
+---
+
+## 🚀 Recommended Browser for AI Strategy
+
+**We highly recommend Comet by Perplexity** as the browser of choice for all our customers. Get the most out of your AI strategy with Comet's enhanced AI capabilities.
+
+<div style="text-align: center; margin: 20px 0;">
+  <a href="https://pplx.ai/jack31428" target="_blank" rel="noopener noreferrer" style="display: inline-block; background: #2563eb; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: background-color 0.2s;">
+    ✨ Try Comet Pro for Free
+  </a>
+</div>
+
+*This recommendation is based on our experience helping hundreds of businesses implement AI solutions successfully.*`;
+
+    return res.content + perplexityCTA;
   } catch (error) {
     console.error("Error generating business plan:", error);
 

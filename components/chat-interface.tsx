@@ -29,6 +29,7 @@ import {
 import { BadgeType, BADGES } from "@/lib/gamification/badges";
 import Image from "next/image";
 import Link from "next/link";
+import { PerplexityCTA } from "@/components/perplexity-cta";
 
 // Motivational messages that rotate randomly for each session
 const MOTIVATIONAL_MESSAGES = {
@@ -953,38 +954,10 @@ Based on our conversation, your business has significant opportunities for growt
           showMilestones={true}
         />
 
-        {/* Gamification Status */}
-        {isStarted && (
-          <div className="mt-6 p-4 bg-primary/5 rounded-lg border border-primary/20">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-primary">
-                Level {level}
-              </span>
-              <span className="text-xs text-muted-foreground">{xp} XP</span>
-            </div>
-            <div className="w-full bg-muted rounded-full h-2">
-              <div
-                className="bg-primary h-2 rounded-full transition-all duration-500"
-                style={{ width: `${getLevelProgress(xp).progress}%` }}
-              />
-            </div>
-            <div className="text-xs text-muted-foreground mt-1">
-              {earnedBadges.length} badge{earnedBadges.length !== 1 ? "s" : ""}{" "}
-              earned
-            </div>
-          </div>
-        )}
+        {/* Perplexity CTA */}
+        <PerplexityCTA variant="sidebar" />
 
-        <div className="mt-auto space-y-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={resetChat}
-            className="w-full"
-          >
-            <RotateCcw className="w-4 h-4 mr-2" />
-            {businessPlanMarkdown ? "Start Over" : "Reset Chat"}
-          </Button>
+        <div className="mt-auto">
           <Button
             variant="outline"
             size="sm"
@@ -1045,36 +1018,49 @@ Based on our conversation, your business has significant opportunities for growt
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
         <div className="border-b glass-surface p-4 flex items-center justify-between sticky top-0 z-10">
-          <div className="flex items-center space-x-3">
-            <Image
-              src="/logo.png"
-              alt="5Q Logo"
-              width={32}
-              height={32}
-              className="rounded lg:hidden"
-            />
-            <div>
-              <h2 className="font-semibold">
-                {businessPlanMarkdown
-                  ? variant === "fitness-coach"
-                    ? "Your Fitness Plan"
-                    : "Your Business Plan"
-                  : variant === "fitness-coach"
-                  ? "Fitness Discovery Chat"
-                  : "Business Discovery Chat"}
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                {businessPlanMarkdown
-                  ? variant === "fitness-coach"
-                    ? "We turned 5 questions into a personalized fitness plan. You're welcome."
-                    : "We turned 5 questions into a full-blown AI plan. You're welcome."
-                  : isStarted
-                  ? `Step ${currentStep} of 6 • ${motivationalMessage}`
-                  : variant === "fitness-coach"
-                  ? "We turn 5 questions into a personalized fitness plan. You're welcome."
-                  : "We turn 5 questions into a full-blown AI plan. You're welcome."}
-              </p>
+          <div className="flex items-center justify-between w-full">
+            <div className="flex items-center space-x-3">
+              <Image
+                src="/logo.png"
+                alt="5Q Logo"
+                width={32}
+                height={32}
+                className="rounded lg:hidden"
+              />
+              <div>
+                <h2 className="font-semibold">
+                  {businessPlanMarkdown
+                    ? variant === "fitness-coach"
+                      ? "Your Fitness Plan"
+                      : "Your Business Plan"
+                    : variant === "fitness-coach"
+                    ? "Fitness Discovery Chat"
+                    : "Business Discovery Chat"}
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  {businessPlanMarkdown
+                    ? variant === "fitness-coach"
+                      ? "We turned 5 questions into a personalized fitness plan. You're welcome."
+                      : "We turned 5 questions into a full-blown AI plan. You're welcome."
+                    : isStarted
+                    ? `Step ${currentStep} of 6 • ${motivationalMessage}`
+                    : variant === "fitness-coach"
+                    ? "We turn 5 questions into a personalized fitness plan. You're welcome."
+                    : "We turn 5 questions into a full-blown AI plan. You're welcome."}
+                </p>
+              </div>
             </div>
+
+            {/* Reset Chat Button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={resetChat}
+              className="hidden lg:flex"
+            >
+              <RotateCcw className="w-4 h-4 mr-2" />
+              {businessPlanMarkdown ? "Start Over" : "Reset Chat"}
+            </Button>
           </div>
 
           {/* Mobile controls */}

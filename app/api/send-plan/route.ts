@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import jsPDF from "jspdf";
-import { withDatabaseIntegration } from "@/lib/db/integration";
+import { withDatabaseIntegration } from "../../../lib/db/integration";
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const FORWARD_EMAIL = "carlsonjack455@gmail.com";
@@ -75,7 +75,7 @@ async function sendEmail(
       status: response.status,
       statusText: response.statusText,
       error,
-      headers: Object.fromEntries(response.headers.entries()),
+      headers: Object.fromEntries(response.headers as any),
       url: response.url,
       to,
       subject,
@@ -125,30 +125,124 @@ function generateBusinessPlanPDF(businessPlan: string, email: string): string {
     // Add business plan content
     pdf.setFontSize(10);
 
-    // Clean the business plan text for PDF (remove markdown formatting)
-    let cleanText = businessPlan
-      .replace(/\*\*(.*?)\*\*/g, "$1") // Remove bold markdown
-      .replace(/\*(.*?)\*/g, "$1") // Remove italic markdown
-      .replace(/#{1,6}\s*/g, "") // Remove headers
-      .replace(/\|.*?\|/g, "") // Remove table content (simplified)
-      .replace(/[-]{3,}/g, "") // Remove table separators
-      .replace(/^\s*[\-\*\+]\s+/gm, "• ") // Convert markdown lists to bullets
-      .trim();
-
-    // Split into lines and add to PDF with word wrapping
-    const lines = pdf.splitTextToSize(cleanText, 170); // 170mm width for A4 with margins
+    // Parse markdown and render with proper table support
+    const lines = businessPlan.split("\n");
     let yPosition = 55;
     const lineHeight = 5;
     const pageHeight = 280; // A4 height minus margins
+    const leftMargin = 20;
+    const rightMargin = 20;
+    const contentWidth = 170; // A4 width minus margins
 
-    lines.forEach((line: string) => {
-      if (yPosition > pageHeight) {
-        pdf.addPage();
-        yPosition = 25;
+    let inTable = false;
+    let tableColumns: string[] = [];
+    let tableRows: string[][] = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+
+      // Check if this is a table row
+      if (line.includes("|") && line.split("|").length > 2) {
+        if (!inTable) {
+          inTable = true;
+          tableColumns = [];
+          tableRows = [];
+        }
+
+        // Parse table row
+        const cells = line
+          .split("|")
+          .map((cell) => cell.trim())
+          .filter((cell) => cell);
+
+        // Skip separator rows (containing only dashes)
+        if (cells.every((cell) => /^-+$/.test(cell))) {
+          continue;
+        }
+
+        tableRows.push(cells);
+
+        // If this is the first row, treat it as headers
+        if (tableRows.length === 1) {
+          tableColumns = cells;
+        }
+      } else {
+        // End of table, render it
+        if (inTable && tableRows.length > 0) {
+          yPosition = renderTable(
+            pdf,
+            tableColumns,
+            tableRows,
+            yPosition,
+            leftMargin,
+            contentWidth,
+            lineHeight,
+            pageHeight
+          );
+          inTable = false;
+          tableColumns = [];
+          tableRows = [];
+        }
+
+        // Handle regular content
+        if (line) {
+          // Handle headers
+          if (line.startsWith("#")) {
+            const headerText = line.replace(/^#+\s*/, "");
+            pdf.setFontSize(12);
+            pdf.setFont("helvetica", "bold");
+
+            if (yPosition > pageHeight - 10) {
+              pdf.addPage();
+              yPosition = 25;
+            }
+
+            pdf.text(headerText, leftMargin, yPosition);
+            yPosition += lineHeight + 2;
+            pdf.setFontSize(10);
+            pdf.setFont("helvetica", "normal");
+          } else {
+            // Handle regular text
+            pdf.setFontSize(10);
+            pdf.setFont("helvetica", "normal");
+
+            // Clean markdown formatting
+            const cleanLine = line
+              .replace(/\*\*(.*?)\*\*/g, "$1") // Remove bold markdown
+              .replace(/\*(.*?)\*/g, "$1") // Remove italic markdown
+              .replace(/^\s*[\-\*\+]\s+/, "• "); // Convert markdown lists to bullets
+
+            const wrappedLines = pdf.splitTextToSize(cleanLine, contentWidth);
+
+            wrappedLines.forEach((wrappedLine: string) => {
+              if (yPosition > pageHeight) {
+                pdf.addPage();
+                yPosition = 25;
+              }
+              pdf.text(wrappedLine, leftMargin, yPosition);
+              yPosition += lineHeight;
+            });
+          }
+        } else {
+          // Empty line
+          yPosition += lineHeight;
+        }
       }
-      pdf.text(line, 20, yPosition);
-      yPosition += lineHeight;
-    });
+    }
+
+    // Render any remaining table
+    if (inTable && tableRows.length > 0) {
+      yPosition = renderTable(
+        pdf,
+        tableColumns,
+        tableRows,
+        yPosition,
+        leftMargin,
+        contentWidth,
+        lineHeight,
+        pageHeight
+      );
+    }
 
     // Return as base64 string
     return pdf.output("datauristring").split(",")[1];
@@ -156,6 +250,68 @@ function generateBusinessPlanPDF(businessPlan: string, email: string): string {
     console.error("Error generating PDF:", error);
     return "";
   }
+}
+
+function renderTable(
+  pdf: any,
+  columns: string[],
+  rows: string[][],
+  startY: number,
+  leftMargin: number,
+  contentWidth: number,
+  lineHeight: number,
+  pageHeight: number
+): number {
+  if (rows.length === 0) return startY;
+
+  const columnCount = columns.length;
+  const columnWidth = contentWidth / columnCount;
+  let yPosition = startY;
+
+  // Check if we need a new page
+  const estimatedHeight = (rows.length + 1) * lineHeight * 2; // +1 for header, *2 for padding
+  if (yPosition + estimatedHeight > pageHeight) {
+    pdf.addPage();
+    yPosition = 25;
+  }
+
+  // Draw table header
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(9);
+
+  columns.forEach((column, index) => {
+    const x = leftMargin + index * columnWidth;
+    const wrappedText = pdf.splitTextToSize(column, columnWidth - 4);
+    pdf.text(wrappedText, x + 2, yPosition);
+  });
+
+  // Draw header underline
+  pdf.line(leftMargin, yPosition + 2, leftMargin + contentWidth, yPosition + 2);
+  yPosition += lineHeight + 2;
+
+  // Draw table rows
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(8);
+
+  rows.forEach((row) => {
+    if (yPosition > pageHeight - lineHeight) {
+      pdf.addPage();
+      yPosition = 25;
+    }
+
+    row.forEach((cell, index) => {
+      const x = leftMargin + index * columnWidth;
+      const wrappedText = pdf.splitTextToSize(cell, columnWidth - 4);
+      pdf.text(wrappedText, x + 2, yPosition);
+    });
+
+    yPosition += lineHeight + 1;
+  });
+
+  // Add some space after table
+  yPosition += lineHeight;
+
+  return yPosition;
 }
 
 function generateChatSummary(
@@ -169,10 +325,8 @@ function generateChatSummary(
 
   chatMessages.forEach((message, index) => {
     const role = message.role === "user" ? "User" : "Assistant";
-    const content =
-      message.content.length > 200
-        ? message.content.substring(0, 200) + "..."
-        : message.content;
+    // Include full content without truncation
+    const content = message.content;
 
     summary += `${role}: ${content}\n\n`;
   });
@@ -185,62 +339,106 @@ function generateBusinessPlanEmail(data: EmailData) {
 
   // Convert markdown to HTML for proper email formatting
   const convertMarkdownToHtml = (markdown: string): string => {
-    return (
-      markdown
-        // Convert headers
-        .replace(
-          /^### (.*$)/gim,
-          '<h3 style="color: #495057; margin: 20px 0 15px 0; font-size: 18px; font-weight: 600;">$1</h3>'
-        )
-        .replace(
-          /^## (.*$)/gim,
-          '<h2 style="color: #495057; margin: 25px 0 20px 0; font-size: 20px; font-weight: 600; border-bottom: 2px solid #e9ecef; padding-bottom: 10px;">$1</h2>'
-        )
-        .replace(
-          /^# (.*$)/gim,
-          '<h1 style="color: #495057; margin: 30px 0 25px 0; font-size: 24px; font-weight: 700;">$1</h1>'
-        )
+    const lines = markdown.split("\n");
+    let html = "";
+    let inTable = false;
+    let tableRows: string[][] = [];
 
-        // Convert bold text
-        .replace(
-          /\*\*(.*?)\*\*/g,
-          '<strong style="font-weight: 600; color: #212529;">$1</strong>'
-        )
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
 
-        // Convert italic text
-        .replace(/\*(.*?)\*/g, '<em style="font-style: italic;">$1</em>')
+      // Check if this is a table row
+      if (line.includes("|") && line.split("|").length > 2) {
+        if (!inTable) {
+          inTable = true;
+          tableRows = [];
+        }
 
-        // Convert bullet points
-        .replace(
-          /^\- (.*$)/gim,
-          '<li style="margin: 8px 0; padding-left: 5px;">$1</li>'
-        )
-        .replace(
-          /(<li.*<\/li>)/g,
-          '<ul style="margin: 15px 0; padding-left: 20px;">$1</ul>'
-        )
+        // Parse table row
+        const cells = line
+          .split("|")
+          .map((cell) => cell.trim())
+          .filter((cell) => cell);
 
-        // Convert numbered lists
-        .replace(
-          /^\d+\. (.*$)/gim,
-          '<li style="margin: 8px 0; padding-left: 5px;">$1</li>'
-        )
+        // Skip separator rows (containing only dashes)
+        if (cells.every((cell) => /^-+$/.test(cell))) {
+          continue;
+        }
 
-        // Convert line breaks
-        .replace(/\n\n/g, '</p><p style="margin: 15px 0; line-height: 1.6;">')
-        .replace(/\n/g, "<br>")
+        tableRows.push(cells);
+      } else {
+        // End of table, render it
+        if (inTable && tableRows.length > 0) {
+          html += renderTableHtml(tableRows);
+          inTable = false;
+          tableRows = [];
+        }
 
-        // Wrap in paragraph tags
-        .replace(
-          /^(?!<[h|u|l])/gm,
-          '<p style="margin: 15px 0; line-height: 1.6;">'
-        )
-        .replace(/(?<!>)$/gm, "</p>")
+        // Handle regular content
+        if (line) {
+          // Handle headers
+          if (line.startsWith("#")) {
+            const headerText = line.replace(/^#+\s*/, "");
+            const level = line.match(/^#+/)?.[0].length || 1;
+            const tag = `h${Math.min(level, 6)}`;
+            const styles = {
+              1: "color: #495057; margin: 30px 0 25px 0; font-size: 24px; font-weight: 700;",
+              2: "color: #495057; margin: 25px 0 20px 0; font-size: 20px; font-weight: 600; border-bottom: 2px solid #e9ecef; padding-bottom: 10px;",
+              3: "color: #495057; margin: 20px 0 15px 0; font-size: 18px; font-weight: 600;",
+            };
+            html += `<${tag} style="${
+              styles[level as keyof typeof styles] || styles[3]
+            }">${headerText}</${tag}>`;
+          } else {
+            // Handle regular text
+            let processedLine = line
+              .replace(
+                /\*\*(.*?)\*\*/g,
+                '<strong style="font-weight: 600; color: #212529;">$1</strong>'
+              )
+              .replace(/\*(.*?)\*/g, '<em style="font-style: italic;">$1</em>')
+              .replace(/^\s*[\-\*\+]\s+/, "• ");
 
-        // Clean up empty paragraphs
-        .replace(/<p[^>]*>\s*<\/p>/g, "")
-        .replace(/<p[^>]*><br><\/p>/g, "")
-    );
+            html += `<p style="margin: 15px 0; line-height: 1.6;">${processedLine}</p>`;
+          }
+        } else {
+          // Empty line
+          html += "<br>";
+        }
+      }
+    }
+
+    // Render any remaining table
+    if (inTable && tableRows.length > 0) {
+      html += renderTableHtml(tableRows);
+    }
+
+    return html;
+  };
+
+  // Helper function to render table HTML
+  const renderTableHtml = (rows: string[][]): string => {
+    if (rows.length === 0) return "";
+
+    let tableHtml =
+      '<table style="width: 100%; border-collapse: collapse; margin: 20px 0; border: 1px solid #e9ecef;">';
+
+    rows.forEach((row, index) => {
+      const isHeader = index === 0;
+      const tag = isHeader ? "th" : "td";
+      const cellStyle = isHeader
+        ? "background-color: #f8f9fa; font-weight: 600; padding: 12px 8px; border: 1px solid #e9ecef; text-align: left; font-size: 14px;"
+        : "padding: 10px 8px; border: 1px solid #e9ecef; font-size: 13px;";
+
+      tableHtml += `<tr>`;
+      row.forEach((cell) => {
+        tableHtml += `<${tag} style="${cellStyle}">${cell}</${tag}>`;
+      });
+      tableHtml += `</tr>`;
+    });
+
+    tableHtml += "</table>";
+    return tableHtml;
   };
 
   const cleanedBusinessPlan = convertMarkdownToHtml(businessPlan);
@@ -364,6 +562,22 @@ function generateBusinessPlanEmail(data: EmailData) {
           <h3 style="color: #155724; margin-top: 0; margin-bottom: 10px;">📎 PDF Attachment Included</h3>
           <p style="margin: 0; color: #155724;">A professional PDF version of your business plan is attached to this email for easy sharing with your team and stakeholders.</p>
         </div>
+        
+        <div style="background: linear-gradient(135deg, #e0f2fe 0%, #e0e7ff 100%); padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #bfdbfe;">
+          <div style="display: flex; align-items: center; margin-bottom: 15px;">
+            <img src="https://5qstrategy.com/perplexity-comet.webp" alt="Perplexity Comet Logo" style="width: 32px; height: 32px; border-radius: 6px; margin-right: 12px;">
+            <div>
+              <h3 style="color: #1e40af; margin: 0; font-size: 16px; font-weight: 600;">Recommended Browser</h3>
+              <p style="color: #3b82f6; margin: 0; font-size: 12px;">Enhanced AI experience</p>
+            </div>
+          </div>
+          <p style="color: #1e40af; margin: 0 0 15px 0; font-size: 13px; line-height: 1.5;">
+            We highly recommend Comet by Perplexity as the browser of choice for all our customers. Get the most out of your AI strategy with Comet.
+          </p>
+          <a href="https://pplx.ai/jack31428" style="display: inline-flex; align-items: center; justify-content: center; padding: 10px 16px; background: #2563eb; color: white; text-decoration: none; border-radius: 6px; font-size: 13px; font-weight: 500; transition: background-color 0.2s;">
+            ✨ Try Comet Pro for Free
+          </a>
+        </div>
       </div>
       
       <div class="footer">
@@ -402,6 +616,11 @@ ${businessPlan}
 
 PDF ATTACHMENT:
 A professional PDF version of your business plan is attached to this email for easy sharing with your team and stakeholders.
+
+RECOMMENDED BROWSER:
+We highly recommend Comet by Perplexity as the browser of choice for all our customers. Get the most out of your AI strategy with Comet's enhanced AI capabilities.
+
+Try Comet Pro for Free: https://pplx.ai/jack31428
 
 NEXT STEPS:
 This plan was generated based on your specific business requirements. Our implementation team will contact you within 24 hours to discuss next steps and answer any questions.

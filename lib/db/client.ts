@@ -1,5 +1,5 @@
 import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
+import postgres = require("postgres");
 import * as schema from "./schema";
 
 // Create connection

@@ -17,6 +17,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import Image from "next/image";
 import { EmailGate } from "@/components/email-gate";
+import { PerplexityCTA } from "@/components/perplexity-cta";
 
 interface BusinessPlanViewerProps {
   markdown: string;
@@ -264,6 +265,9 @@ export function BusinessPlanViewer({
           </Button>
         </div>
       </div>
+
+      {/* Perplexity CTA */}
+      <PerplexityCTA variant="inline" className="mb-6" />
 
       {!isEmailSubmitted ? (
         <div className="space-y-6">
