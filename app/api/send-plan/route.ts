@@ -128,7 +128,7 @@ function generateBusinessPlanPDF(businessPlan: string, email: string): string {
     // Parse markdown and render with proper table support
     const lines = businessPlan.split("\n");
     let yPosition = 55;
-    const lineHeight = 7; // Increased line height for better readability
+    const lineHeight = 6; // Reduced line height for better fit
     const pageHeight = 280; // A4 height minus margins
     const leftMargin = 20;
     const rightMargin = 20;
@@ -169,7 +169,7 @@ function generateBusinessPlanPDF(businessPlan: string, email: string): string {
       } else {
         // End of table, render it
         if (inTable && tableRows.length > 0) {
-          yPosition = renderTable(
+          yPosition = renderTableImproved(
             pdf,
             tableColumns,
             tableRows,
@@ -202,7 +202,7 @@ function generateBusinessPlanPDF(businessPlan: string, email: string): string {
             }
 
             pdf.text(headerText, leftMargin, yPosition);
-            yPosition += lineHeight + 3; // More space after headers
+            yPosition += lineHeight + 2; // Reduced spacing
             pdf.setFontSize(12);
             pdf.setFont("helvetica", "normal");
           } else {
@@ -210,11 +210,16 @@ function generateBusinessPlanPDF(businessPlan: string, email: string): string {
             pdf.setFontSize(12);
             pdf.setFont("helvetica", "normal");
 
-            // Clean markdown formatting
-            const cleanLine = line
+            // Clean markdown formatting and handle CTA
+            let cleanLine = line
               .replace(/\*\*(.*?)\*\*/g, "$1") // Remove bold markdown
               .replace(/\*(.*?)\*/g, "$1") // Remove italic markdown
               .replace(/^\s*[\-\*\+]\s+/, "• "); // Convert markdown lists to bullets
+
+            // Handle Comet CTA - convert HTML to plain text
+            if (cleanLine.includes("Try Comet Pro for Free")) {
+              cleanLine = "Recommended Browser: Comet by Perplexity - Try Comet Pro for Free at https://pplx.ai/jack31428";
+            }
 
             const wrappedLines = pdf.splitTextToSize(cleanLine, contentWidth);
 
@@ -236,7 +241,7 @@ function generateBusinessPlanPDF(businessPlan: string, email: string): string {
 
     // Render any remaining table
     if (inTable && tableRows.length > 0) {
-      yPosition = renderTable(
+      yPosition = renderTableImproved(
         pdf,
         tableColumns,
         tableRows,
@@ -256,108 +261,198 @@ function generateBusinessPlanPDF(businessPlan: string, email: string): string {
   }
 }
 
-function renderTable(
+function convertMarkdownToHtmlForPDF(markdown: string): string {
+  const lines = markdown.split("\n");
+  let html = "";
+  let inTable = false;
+  let tableRows: string[][] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+
+    // Check if this is a table row
+    if (line.includes("|") && line.split("|").length > 2) {
+      if (!inTable) {
+        inTable = true;
+        tableRows = [];
+      }
+
+      // Parse table row
+      const cells = line
+        .split("|")
+        .map((cell) => cell.trim())
+        .filter((cell) => cell);
+
+      // Skip separator rows (containing only dashes)
+      if (cells.every((cell) => /^-+$/.test(cell))) {
+        continue;
+      }
+
+      tableRows.push(cells);
+    } else {
+      // End of table, render it
+      if (inTable && tableRows.length > 0) {
+        html += renderTableHtmlForPDF(tableRows);
+        inTable = false;
+        tableRows = [];
+      }
+
+      // Handle regular content
+      if (line) {
+        // Handle headers
+        if (line.startsWith("#")) {
+          const headerText = line.replace(/^#+\s*/, "");
+          const level = line.match(/^#+/)?.[0].length || 1;
+          const tag = `h${Math.min(level, 6)}`;
+          html += `<${tag}>${headerText}</${tag}>`;
+        } else {
+          // Handle regular text
+          let processedLine = line
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*(.*?)\*/g, '<em>$1</em>')
+            .replace(/^\s*[\-\*\+]\s+/, "• ");
+
+          html += `<p>${processedLine}</p>`;
+        }
+      } else {
+        // Empty line
+        html += "<br>";
+      }
+    }
+  }
+
+  // Render any remaining table
+  if (inTable && tableRows.length > 0) {
+    html += renderTableHtmlForPDF(tableRows);
+  }
+
+  return html;
+}
+
+function renderTableHtmlForPDF(rows: string[][]): string {
+  if (rows.length === 0) return "";
+
+  let tableHtml = '<table>';
+
+  rows.forEach((row, index) => {
+    const isHeader = index === 0;
+    const tag = isHeader ? "th" : "td";
+
+    tableHtml += `<tr>`;
+    row.forEach((cell) => {
+      tableHtml += `<${tag}>${cell}</${tag}>`;
+    });
+    tableHtml += `</tr>`;
+  });
+
+  tableHtml += "</table>";
+  return tableHtml;
+}
+
+function renderTableImproved(
   pdf: any,
   columns: string[],
   rows: string[][],
-  startY: number,
+  yPosition: number,
   leftMargin: number,
   contentWidth: number,
   lineHeight: number,
   pageHeight: number
 ): number {
-  if (rows.length === 0) return startY;
+  if (rows.length === 0) return yPosition;
 
-  const columnCount = columns.length;
+  const numColumns = columns.length;
+  const cellPadding = 3;
+  const headerHeight = 10;
+  const rowHeight = 8;
 
-  // Calculate optimal column widths based on content
+  // Calculate dynamic column widths based on content
   const columnWidths: number[] = [];
-  const minColumnWidth = 25; // Minimum width for readability
-  const maxColumnWidth = 60; // Maximum width to prevent overly wide columns
+  const minWidth = 20;
+  const maxWidth = 60;
 
-  // Calculate average content length per column
-  const avgContentLengths = columns.map((_, colIndex) => {
-    const allCellContent = [
-      columns[colIndex],
-      ...rows.map((row) => row[colIndex] || ""),
-    ].join(" ");
-    return allCellContent.length;
-  });
-
-  const totalContentLength = avgContentLengths.reduce(
-    (sum, len) => sum + len,
-    0
-  );
-
-  // Distribute width proportionally, but within min/max bounds
-  avgContentLengths.forEach((length) => {
-    const proportionalWidth = (length / totalContentLength) * contentWidth;
-    const clampedWidth = Math.max(
-      minColumnWidth,
-      Math.min(maxColumnWidth, proportionalWidth)
-    );
-    columnWidths.push(clampedWidth);
-  });
-
-  // Adjust if total width exceeds contentWidth
-  const totalWidth = columnWidths.reduce((sum, width) => sum + width, 0);
-  if (totalWidth > contentWidth) {
-    const scaleFactor = contentWidth / totalWidth;
-    columnWidths.forEach((width, index) => {
-      columnWidths[index] = width * scaleFactor;
+  // Calculate optimal column widths
+  for (let i = 0; i < numColumns; i++) {
+    let maxLength = columns[i].length;
+    
+    // Check all rows for this column
+    rows.forEach(row => {
+      if (row[i]) {
+        maxLength = Math.max(maxLength, row[i].length);
+      }
     });
+
+    // Calculate width based on content length
+    let width = Math.max(minWidth, Math.min(maxWidth, maxLength * 1.5));
+    columnWidths.push(width);
   }
 
-  let yPosition = startY;
+  // Normalize widths to fit contentWidth
+  const totalWidth = columnWidths.reduce((sum, width) => sum + width, 0);
+  const scaleFactor = contentWidth / totalWidth;
+  
+  for (let i = 0; i < columnWidths.length; i++) {
+    columnWidths[i] *= scaleFactor;
+  }
 
-  // Check if we need a new page
-  const estimatedHeight = (rows.length + 1) * lineHeight * 2; // +1 for header, *2 for padding
-  if (yPosition + estimatedHeight > pageHeight) {
+  // Calculate total table height
+  const totalRows = rows.length;
+  const tableHeight = headerHeight + totalRows * rowHeight;
+
+  // Check if table fits on current page
+  if (yPosition + tableHeight > pageHeight) {
     pdf.addPage();
     yPosition = 25;
   }
 
   // Draw table header
+  pdf.setFontSize(10);
   pdf.setFont("helvetica", "bold");
-  pdf.setFontSize(11);
+  let xPosition = leftMargin;
 
   columns.forEach((column, index) => {
-    const x =
-      leftMargin +
-      columnWidths.slice(0, index).reduce((sum, width) => sum + width, 0);
-    const wrappedText = pdf.splitTextToSize(column, columnWidths[index] - 4);
-    pdf.text(wrappedText, x + 2, yPosition);
+    const columnWidth = columnWidths[index];
+    
+    // Draw header cell background
+    pdf.setFillColor(245, 245, 245);
+    pdf.rect(xPosition, yPosition, columnWidth, headerHeight, "F");
+
+    // Draw header border
+    pdf.setDrawColor(221, 221, 221);
+    pdf.rect(xPosition, yPosition, columnWidth, headerHeight);
+
+    // Draw header text with word wrapping
+    const wrappedText = pdf.splitTextToSize(column, columnWidth - cellPadding * 2);
+    pdf.text(wrappedText, xPosition + cellPadding, yPosition + headerHeight - 2);
+    xPosition += columnWidth;
   });
 
-  // Draw header underline
-  pdf.line(leftMargin, yPosition + 3, leftMargin + contentWidth, yPosition + 3);
-  yPosition += lineHeight + 3;
+  yPosition += headerHeight;
 
   // Draw table rows
+  pdf.setFontSize(9);
   pdf.setFont("helvetica", "normal");
-  pdf.setFontSize(10);
 
-  rows.forEach((row) => {
-    if (yPosition > pageHeight - lineHeight) {
-      pdf.addPage();
-      yPosition = 25;
-    }
+  rows.forEach((row, rowIndex) => {
+    xPosition = leftMargin;
 
-    row.forEach((cell, index) => {
-      const x =
-        leftMargin +
-        columnWidths.slice(0, index).reduce((sum, width) => sum + width, 0);
-      const wrappedText = pdf.splitTextToSize(cell, columnWidths[index] - 4);
-      pdf.text(wrappedText, x + 2, yPosition);
+    row.forEach((cell, cellIndex) => {
+      const columnWidth = columnWidths[cellIndex];
+      
+      // Draw cell border
+      pdf.setDrawColor(221, 221, 221);
+      pdf.rect(xPosition, yPosition, columnWidth, rowHeight);
+
+      // Draw cell content with word wrapping
+      const wrappedText = pdf.splitTextToSize(cell || "", columnWidth - cellPadding * 2);
+      pdf.text(wrappedText, xPosition + cellPadding, yPosition + rowHeight - 1);
+      xPosition += columnWidth;
     });
 
-    yPosition += lineHeight + 2; // More space between rows
+    yPosition += rowHeight;
   });
 
-  // Add some space after table
-  yPosition += lineHeight;
-
-  return yPosition;
+  return yPosition + 5; // Add some space after table
 }
 
 function generateChatSummary(
