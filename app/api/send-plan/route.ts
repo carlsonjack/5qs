@@ -123,12 +123,12 @@ function generateBusinessPlanPDF(businessPlan: string, email: string): string {
     pdf.text(`Date: ${new Date().toLocaleDateString()}`, 20, 42);
 
     // Add business plan content
-    pdf.setFontSize(10);
+    pdf.setFontSize(12);
 
     // Parse markdown and render with proper table support
     const lines = businessPlan.split("\n");
     let yPosition = 55;
-    const lineHeight = 5;
+    const lineHeight = 7; // Increased line height for better readability
     const pageHeight = 280; // A4 height minus margins
     const leftMargin = 20;
     const rightMargin = 20;
@@ -189,21 +189,25 @@ function generateBusinessPlanPDF(businessPlan: string, email: string): string {
           // Handle headers
           if (line.startsWith("#")) {
             const headerText = line.replace(/^#+\s*/, "");
-            pdf.setFontSize(12);
+            const headerLevel = line.match(/^#+/)?.[0].length || 1;
+            const headerSize =
+              headerLevel === 1 ? 16 : headerLevel === 2 ? 14 : 12;
+
+            pdf.setFontSize(headerSize);
             pdf.setFont("helvetica", "bold");
 
-            if (yPosition > pageHeight - 10) {
+            if (yPosition > pageHeight - 15) {
               pdf.addPage();
               yPosition = 25;
             }
 
             pdf.text(headerText, leftMargin, yPosition);
-            yPosition += lineHeight + 2;
-            pdf.setFontSize(10);
+            yPosition += lineHeight + 3; // More space after headers
+            pdf.setFontSize(12);
             pdf.setFont("helvetica", "normal");
           } else {
             // Handle regular text
-            pdf.setFontSize(10);
+            pdf.setFontSize(12);
             pdf.setFont("helvetica", "normal");
 
             // Clean markdown formatting
@@ -265,7 +269,45 @@ function renderTable(
   if (rows.length === 0) return startY;
 
   const columnCount = columns.length;
-  const columnWidth = contentWidth / columnCount;
+
+  // Calculate optimal column widths based on content
+  const columnWidths: number[] = [];
+  const minColumnWidth = 25; // Minimum width for readability
+  const maxColumnWidth = 60; // Maximum width to prevent overly wide columns
+
+  // Calculate average content length per column
+  const avgContentLengths = columns.map((_, colIndex) => {
+    const allCellContent = [
+      columns[colIndex],
+      ...rows.map((row) => row[colIndex] || ""),
+    ].join(" ");
+    return allCellContent.length;
+  });
+
+  const totalContentLength = avgContentLengths.reduce(
+    (sum, len) => sum + len,
+    0
+  );
+
+  // Distribute width proportionally, but within min/max bounds
+  avgContentLengths.forEach((length) => {
+    const proportionalWidth = (length / totalContentLength) * contentWidth;
+    const clampedWidth = Math.max(
+      minColumnWidth,
+      Math.min(maxColumnWidth, proportionalWidth)
+    );
+    columnWidths.push(clampedWidth);
+  });
+
+  // Adjust if total width exceeds contentWidth
+  const totalWidth = columnWidths.reduce((sum, width) => sum + width, 0);
+  if (totalWidth > contentWidth) {
+    const scaleFactor = contentWidth / totalWidth;
+    columnWidths.forEach((width, index) => {
+      columnWidths[index] = width * scaleFactor;
+    });
+  }
+
   let yPosition = startY;
 
   // Check if we need a new page
@@ -277,21 +319,23 @@ function renderTable(
 
   // Draw table header
   pdf.setFont("helvetica", "bold");
-  pdf.setFontSize(9);
+  pdf.setFontSize(11);
 
   columns.forEach((column, index) => {
-    const x = leftMargin + index * columnWidth;
-    const wrappedText = pdf.splitTextToSize(column, columnWidth - 4);
+    const x =
+      leftMargin +
+      columnWidths.slice(0, index).reduce((sum, width) => sum + width, 0);
+    const wrappedText = pdf.splitTextToSize(column, columnWidths[index] - 4);
     pdf.text(wrappedText, x + 2, yPosition);
   });
 
   // Draw header underline
-  pdf.line(leftMargin, yPosition + 2, leftMargin + contentWidth, yPosition + 2);
-  yPosition += lineHeight + 2;
+  pdf.line(leftMargin, yPosition + 3, leftMargin + contentWidth, yPosition + 3);
+  yPosition += lineHeight + 3;
 
   // Draw table rows
   pdf.setFont("helvetica", "normal");
-  pdf.setFontSize(8);
+  pdf.setFontSize(10);
 
   rows.forEach((row) => {
     if (yPosition > pageHeight - lineHeight) {
@@ -300,12 +344,14 @@ function renderTable(
     }
 
     row.forEach((cell, index) => {
-      const x = leftMargin + index * columnWidth;
-      const wrappedText = pdf.splitTextToSize(cell, columnWidth - 4);
+      const x =
+        leftMargin +
+        columnWidths.slice(0, index).reduce((sum, width) => sum + width, 0);
+      const wrappedText = pdf.splitTextToSize(cell, columnWidths[index] - 4);
       pdf.text(wrappedText, x + 2, yPosition);
     });
 
-    yPosition += lineHeight + 1;
+    yPosition += lineHeight + 2; // More space between rows
   });
 
   // Add some space after table

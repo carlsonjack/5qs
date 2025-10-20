@@ -370,6 +370,34 @@ export function BusinessPlanViewer({
                         <div className="max-w-xs break-words">{children}</div>
                       </td>
                     ),
+                    a: ({ href, children }) => {
+                      // Check if this is the Perplexity CTA link
+                      if (href === "https://pplx.ai/jack31428") {
+                        return (
+                          <div className="text-center my-6">
+                            <a
+                              href={href}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center justify-center px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-md transition-colors duration-200"
+                            >
+                              {children}
+                            </a>
+                          </div>
+                        );
+                      }
+                      // Regular link styling
+                      return (
+                        <a
+                          href={href}
+                          className="text-blue-600 hover:text-blue-800 underline"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {children}
+                        </a>
+                      );
+                    },
                   }}
                 >
                   {getPreviewContent(markdown)}
@@ -551,6 +579,34 @@ export function BusinessPlanViewer({
                       <div className="max-w-xs break-words">{children}</div>
                     </td>
                   ),
+                  a: ({ href, children }) => {
+                    // Check if this is the Perplexity CTA link
+                    if (href === "https://pplx.ai/jack31428") {
+                      return (
+                        <div className="text-center my-6">
+                          <a
+                            href={href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center justify-center px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-md transition-colors duration-200"
+                          >
+                            {children}
+                          </a>
+                        </div>
+                      );
+                    }
+                    // Regular link styling
+                    return (
+                      <a
+                        href={href}
+                        className="text-blue-600 hover:text-blue-800 underline"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {children}
+                      </a>
+                    );
+                  },
                 }}
               >
                 {markdown}
