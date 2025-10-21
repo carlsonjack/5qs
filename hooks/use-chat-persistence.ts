@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { BadgeType } from "@/lib/gamification/badges";
 
 interface ChatMessage {
+  id: string;
   content: string;
   isUser: boolean;
   timestamp?: string;
@@ -13,6 +14,7 @@ interface ChatState {
   messages: ChatMessage[];
   currentStep: number;
   isStarted: boolean;
+  conversationId: string;
   contextSummary: any;
   websiteAnalysis: any;
   financialAnalysis: any;
@@ -80,6 +82,7 @@ export function useChatPersistence() {
     messages: [],
     currentStep: 1,
     isStarted: false,
+    conversationId: crypto.randomUUID(),
     contextSummary: null,
     websiteAnalysis: null,
     financialAnalysis: null,

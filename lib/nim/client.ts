@@ -1011,14 +1011,44 @@ export function sanitizeQuestion(raw: string, step: number): string {
       match.includes("OverviewWhat") ||
       match.includes("PointsWhat") ||
       match.includes("PointsGiven") ||
-      match.includes("ReachConsidering")
+      match.includes("ReachConsidering") ||
+      match.includes("DataConsidering") ||
+      match.includes("OperationsConsidering") ||
+      match.includes("GoalsConsidering") ||
+      match.includes("PainPointsConsidering") ||
+      match.includes("CustomersConsidering") ||
+      match.includes("CustomersReachConsidering") ||
+      match.includes("CustomersReachGiven") ||
+      match.includes("CustomersReachConsidering") ||
+      match.includes("CustomersReachGiven") ||
+      match.includes("CustomersReachConsidering") ||
+      match.includes("CustomersReachGiven") ||
+      match.includes("CustomersReachConsidering") ||
+      match.includes("CustomersReachGiven") ||
+      match.includes("CustomersReachConsidering") ||
+      match.includes("DataHow") ||
+      match.includes("DataGiven") ||
+      match.includes("DataConsidering") ||
+      match.includes("DataGiven") ||
+      match.includes("VisionFINAL") ||
+      match.includes("VisionFinal")
     ) {
       return p1 + " " + p2;
     }
     return match;
   });
 
-  // 7) Add line break after question topic for better readability
+  // 7) Fix "FINAL QUESTION" formatting
+  content = content.replace(
+    /(Goals & Vision)FINAL QUESTION/i,
+    "$1 (Final Question)"
+  );
+  content = content.replace(
+    /(Goals & Vision)Final Question/i,
+    "$1 (Final Question)"
+  );
+
+  // 8) Add line break after question topic for better readability
   // Look for question words that typically start the question body
   const questionWords = [
     "What",
@@ -1030,6 +1060,17 @@ export function sanitizeQuestion(raw: string, step: number): string {
     "Which",
     "With",
     "Looking",
+    "Given",
+    "Considering",
+    "Based",
+    "Focusing",
+    "Building",
+    "Expanding",
+    "Improving",
+    "Optimizing",
+    "Streamlining",
+    "Enhancing",
+    "Developing",
   ];
 
   for (const word of questionWords) {

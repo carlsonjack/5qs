@@ -7,6 +7,7 @@ export interface ContextSummary {
   dataAvailable: string;
   priorTechUse: string;
   growthIntent: string;
+  companyName?: string;
 }
 
 export const ContextSummarySchema = z
@@ -17,6 +18,7 @@ export const ContextSummarySchema = z
     dataAvailable: z.string(),
     priorTechUse: z.string(),
     growthIntent: z.string(),
+    companyName: z.string().optional(),
   })
   .strict();
 
@@ -51,6 +53,7 @@ export const GuidedJsonSchemaForNIM = {
 export const WebsiteAnalysisSchemaForNIM = {
   type: "object",
   properties: {
+    companyName: { type: "string" },
     productsServices: { type: "string" },
     customerSegment: { type: "string" },
     techStack: { type: "string" },
@@ -58,6 +61,7 @@ export const WebsiteAnalysisSchemaForNIM = {
     marketingWeaknesses: { type: "string" },
   },
   required: [
+    "companyName",
     "productsServices",
     "customerSegment",
     "techStack",

@@ -258,7 +258,8 @@ interface ContextSummary {
   dataAvailable: string;
   priorTechUse: string;
   growthIntent: string;
-  [key: string]: string;
+  companyName?: string;
+  [key: string]: string | undefined;
 }
 
 export function ChatInterface() {
@@ -272,6 +273,7 @@ export function ChatInterface() {
   const [currentStep, setCurrentStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [isStarted, setIsStarted] = useState(false);
+  const [conversationId, setConversationId] = useState<string>("");
   const [contextSummary, setContextSummary] = useState<ContextSummary | null>(
     null
   );
@@ -331,6 +333,7 @@ export function ChatInterface() {
         );
         setCurrentStep(savedState.currentStep);
         setIsStarted(savedState.isStarted);
+        setConversationId(savedState.conversationId || crypto.randomUUID());
         setContextSummary(savedState.contextSummary);
         setIsContextGatheringComplete(savedState.isContextGatheringComplete);
         setBusinessPlanMarkdown(savedState.businessPlanMarkdown);
@@ -352,12 +355,14 @@ export function ChatInterface() {
     if (isHydrated) {
       saveState({
         messages: messages.map((msg) => ({
+          id: msg.id,
           content: msg.content,
           isUser: msg.isUser,
           timestamp: msg.timestamp,
         })),
         currentStep,
         isStarted,
+        conversationId,
         contextSummary,
         isContextGatheringComplete,
         businessPlanMarkdown,
@@ -494,6 +499,8 @@ export function ChatInterface() {
         contextData.revenueTrend ||
         contextData.dataAvailable ||
         "Not yet specified",
+      companyName:
+        contextData.companyName || contextData.title || "Your Business",
     };
 
     // Add any additional fields from the analysis
@@ -692,7 +699,7 @@ export function ChatInterface() {
   const handleSendMessage = async (content: string, files?: File[]) => {
     // Process files if provided
     let messageContent = content;
-    let fileContents: Array<{ name: string; content: string }> = [];
+    const fileContents: Array<{ name: string; content: string }> = [];
 
     if (files && files.length > 0) {
       const fileNames = files.map((f) => f.name).join(", ");
@@ -1155,6 +1162,8 @@ Based on our conversation, your business has significant opportunities for growt
                     data.revenueTrend ||
                     data.dataAvailable ||
                     "Not yet specified",
+                  companyName:
+                    data.companyName || data.title || "Your Business",
                 };
                 setContextSummary(initialContext as ContextSummary);
               }}
@@ -1188,8 +1197,25 @@ Based on our conversation, your business has significant opportunities for growt
                   message={message.content}
                   isUser={message.isUser}
                   timestamp={message.timestamp}
+                  conversationId={conversationId}
+                  messageId={message.id}
+                  stepNumber={currentStep}
+                  isBusinessPlan={false}
+                  appVariant={variant || undefined}
                 />
               ))}
+              {/* Loading indicator for next question */}
+              {isLoading && !isGeneratingPlan && (
+                <div className="flex justify-start p-4">
+                  <div className="flex items-center space-x-3 p-4 max-w-md">
+                    <div className="flex space-x-1">
+                      <div className="w-2 h-2 bg-primary rounded-full pulse-dot"></div>
+                      <div className="w-2 h-2 bg-primary rounded-full pulse-dot"></div>
+                      <div className="w-2 h-2 bg-primary rounded-full pulse-dot"></div>
+                    </div>
+                  </div>
+                </div>
+              )}
               {/* ✅ Show generating plan state */}
               {isGeneratingPlan && (
                 <div className="flex flex-col items-center justify-center py-8 space-y-4">

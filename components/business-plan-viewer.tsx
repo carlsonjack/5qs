@@ -124,103 +124,37 @@ export function BusinessPlanViewer({
     setIsGeneratingPdf(true);
 
     try {
-      // Dynamic import to avoid SSR issues
-      const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
-        import("jspdf"),
-        import("html2canvas"),
-      ]);
-
-      if (!contentRef.current) {
-        throw new Error("Content reference not found");
-      }
-
-      // Create a temporary container with better styling for PDF
-      const tempContainer = document.createElement("div");
-      tempContainer.style.position = "absolute";
-      tempContainer.style.left = "-9999px";
-      tempContainer.style.top = "0";
-      tempContainer.style.width = "210mm"; // A4 width
-      tempContainer.style.padding = "20mm";
-      tempContainer.style.backgroundColor = "white";
-      tempContainer.style.fontFamily = "Arial, sans-serif";
-      tempContainer.style.fontSize = "12px";
-      tempContainer.style.lineHeight = "1.6";
-      tempContainer.style.color = "#000000";
-
-      // Clone the content and style it for PDF
-      const clonedContent = contentRef.current.cloneNode(true) as HTMLElement;
-
-      // Apply PDF-specific styles
-      const styleElement = document.createElement("style");
-      styleElement.textContent = `
-        h1 { font-size: 24px; margin: 20px 0 15px 0; color: #000; border-bottom: 2px solid #000; padding-bottom: 5px; }
-        h2 { font-size: 20px; margin: 18px 0 12px 0; color: #000; }
-        h3 { font-size: 16px; margin: 15px 0 10px 0; color: #000; }
-        h4 { font-size: 14px; margin: 12px 0 8px 0; color: #000; }
-        p { margin: 8px 0; }
-        ul, ol { margin: 8px 0; padding-left: 20px; }
-        li { margin: 4px 0; }
-        strong { font-weight: bold; }
-        em { font-style: italic; }
-        code { background-color: #f5f5f5; padding: 2px 4px; border-radius: 3px; }
-        blockquote { border-left: 4px solid #ccc; margin: 10px 0; padding-left: 15px; font-style: italic; }
-        hr { border: none; border-top: 1px solid #ccc; margin: 20px 0; }
-        table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 11px; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        th { background-color: #f5f5f5; font-weight: bold; }
-        tr:nth-child(even) { background-color: #f9f9f9; }
-        .prose { max-width: none !important; }
-      `;
-
-      tempContainer.appendChild(styleElement);
-      tempContainer.appendChild(clonedContent);
-      document.body.appendChild(tempContainer);
-
-      // Generate canvas from the styled content
-      const canvas = await html2canvas(tempContainer, {
-        scale: 2, // Higher resolution
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: "#ffffff",
-        width: tempContainer.scrollWidth,
-        height: tempContainer.scrollHeight,
+      // Use the same PDF generation API as email attachments
+      const response = await fetch("/api/generate-pdf", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          businessPlan: markdown,
+          email: "user@example.com", // Default email for download
+        }),
       });
 
-      // Remove temporary container
-      document.body.removeChild(tempContainer);
-
-      // Create PDF
-      const pdf = new jsPDF({
-        orientation: "portrait",
-        unit: "mm",
-        format: "a4",
-      });
-
-      const imgData = canvas.toDataURL("image/png");
-      const imgWidth = 210; // A4 width in mm
-      const pageHeight = 297; // A4 height in mm
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      let heightLeft = imgHeight;
-      let position = 0;
-
-      // Add first page
-      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
-
-      // Add additional pages if content is longer than one page
-      while (heightLeft >= 0) {
-        position = heightLeft - imgHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
+      if (!response.ok) {
+        throw new Error("Failed to generate PDF");
       }
+
+      const pdfBlob = await response.blob();
+
+      // Create download link
+      const url = URL.createObjectURL(pdfBlob);
+      const a = document.createElement("a");
+      a.href = url;
 
       // Generate filename with timestamp
       const timestamp = new Date().toISOString().split("T")[0];
-      const filename = `business-plan-${timestamp}.pdf`;
+      a.download = `business-plan-${timestamp}.pdf`;
 
-      // Download the PDF
-      pdf.save(filename);
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
 
       toast({
         title: "PDF Generated!",
@@ -361,7 +295,7 @@ export function BusinessPlanViewer({
                       </tr>
                     ),
                     th: ({ children }) => (
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                         {children}
                       </th>
                     ),
@@ -374,7 +308,7 @@ export function BusinessPlanViewer({
                       // Check if this is the Perplexity CTA link
                       if (href === "https://pplx.ai/jack31428") {
                         return (
-                          <div className="text-center my-6">
+                          <span className="block text-center my-6">
                             <a
                               href={href}
                               target="_blank"
@@ -383,7 +317,7 @@ export function BusinessPlanViewer({
                             >
                               {children}
                             </a>
-                          </div>
+                          </span>
                         );
                       }
                       // Regular link styling
@@ -570,7 +504,7 @@ export function BusinessPlanViewer({
                     </tr>
                   ),
                   th: ({ children }) => (
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                       {children}
                     </th>
                   ),
@@ -583,7 +517,7 @@ export function BusinessPlanViewer({
                     // Check if this is the Perplexity CTA link
                     if (href === "https://pplx.ai/jack31428") {
                       return (
-                        <div className="text-center my-6">
+                        <span className="block text-center my-6">
                           <a
                             href={href}
                             target="_blank"
@@ -592,7 +526,7 @@ export function BusinessPlanViewer({
                           >
                             {children}
                           </a>
-                        </div>
+                        </span>
                       );
                     }
                     // Regular link styling

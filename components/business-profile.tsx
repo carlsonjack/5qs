@@ -18,6 +18,7 @@ interface ContextSummary {
   dataAvailable: string;
   priorTechUse: string;
   growthIntent: string;
+  companyName?: string;
 }
 
 interface BusinessProfileProps {
@@ -69,7 +70,7 @@ export function BusinessProfile({
   ];
 
   return (
-    <Card variant="glass" className="h-full flex flex-col">
+    <Card variant="glass" className="h-full flex flex-col overflow-visible">
       <CardHeader className="pb-3 flex-shrink-0">
         <CardTitle className="text-lg flex items-center gap-2">
           <Building2 className="w-5 h-5 text-primary" />
@@ -77,8 +78,12 @@ export function BusinessProfile({
         </CardTitle>
       </CardHeader>
       <CardContent
-        className="space-y-4 flex-1 overflow-y-auto max-h-[calc(100vh-200px)] edge-fade"
-        style={{ scrollbarWidth: "thin" }}
+        className="space-y-4 flex-1 max-h-[calc(100vh-200px)] edge-fade"
+        style={{
+          scrollbarWidth: "thin",
+          overflowY: "auto",
+          overflowX: "visible",
+        }}
       >
         {fields.map((field) => {
           const Icon = field.icon;

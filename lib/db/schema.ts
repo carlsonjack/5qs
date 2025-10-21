@@ -35,6 +35,11 @@ export const planStatusEnum = pgEnum("plan_status", [
   "downloaded",
 ]);
 
+export const feedbackTypeEnum = pgEnum("feedback_type", [
+  "thumbs_up",
+  "thumbs_down",
+]);
+
 // Users table - for basic user identification and session management
 export const users = pgTable(
   "users",
@@ -506,6 +511,44 @@ export const systemHealth = pgTable(
   })
 );
 
+// Feedback table - track user feedback on AI responses
+export const feedback = pgTable(
+  "feedback",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").references(() => users.id),
+    conversationId: text("conversation_id"),
+    messageId: text("message_id"),
+
+    // Feedback details
+    feedbackType: feedbackTypeEnum("feedback_type").notNull(),
+    stepNumber: integer("step_number"), // Which step the feedback is for
+    isBusinessPlan: boolean("is_business_plan").default(false), // Is this feedback for a business plan?
+
+    // Context
+    messageContent: text("message_content"), // Snapshot of the message content
+    appVariant: text("app_variant"), // Which variant of the app
+
+    // Additional feedback data
+    rating: integer("rating"), // Optional 1-5 rating
+    comment: text("comment"), // Optional text feedback
+    metadata: jsonb("metadata"), // Additional structured data
+
+    // Timestamps
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdIdx: index("feedback_user_id_idx").on(table.userId),
+    conversationIdIdx: index("feedback_conversation_id_idx").on(
+      table.conversationId
+    ),
+    messageIdIdx: index("feedback_message_id_idx").on(table.messageId),
+    feedbackTypeIdx: index("feedback_feedback_type_idx").on(table.feedbackType),
+    stepNumberIdx: index("feedback_step_number_idx").on(table.stepNumber),
+    createdAtIdx: index("feedback_created_at_idx").on(table.createdAt),
+  })
+);
+
 // Type exports for use in the application
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -536,3 +579,6 @@ export type NewAnalyticsEvent = typeof analyticsEvents.$inferInsert;
 
 export type SystemHealth = typeof systemHealth.$inferSelect;
 export type NewSystemHealth = typeof systemHealth.$inferInsert;
+
+export type Feedback = typeof feedback.$inferSelect;
+export type NewFeedback = typeof feedback.$inferInsert;

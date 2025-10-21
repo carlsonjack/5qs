@@ -27,6 +27,7 @@ interface ContextSummary {
   dataAvailable: string;
   priorTechUse: string;
   growthIntent: string;
+  companyName?: string;
 }
 
 type StepDisciplineViolation = "final_question_early" | "summary_too_early";
@@ -547,6 +548,7 @@ Conversation to analyze:`;
           growthIntent:
             analysisData?.websiteAnalysis?.customerSegment ||
             "Not yet specified",
+          companyName: "Your Business",
         };
         console.log("Using fallback context summary:", parsedSummary);
       }
@@ -590,6 +592,43 @@ Conversation to analyze:`;
         ) {
           parsedSummary.dataAvailable = website.marketingStrengths;
           console.log("Mapped dataAvailable:", website.marketingStrengths);
+        }
+
+        // Extract company name from AI website analysis (preferred) or fallback to title/domain
+        if (
+          analysisData.websiteAnalysis?.companyName &&
+          analysisData.websiteAnalysis.companyName !==
+            "Unable to determine from website content"
+        ) {
+          parsedSummary.companyName = analysisData.websiteAnalysis.companyName;
+          console.log(
+            "Mapped companyName from AI analysis:",
+            analysisData.websiteAnalysis.companyName
+          );
+        } else if (
+          website.title &&
+          website.title !== "Website Title Not Available"
+        ) {
+          parsedSummary.companyName = website.title;
+          console.log("Mapped companyName from title:", website.title);
+        } else if (website.domain) {
+          // Extract company name from domain (e.g., "rotorooter.com" -> "Roto-Rooter")
+          const domainName = website.domain.replace(
+            /\.(com|org|net|co|us)$/i,
+            ""
+          );
+          const companyName = domainName
+            .split(/[-._]/)
+            .map(
+              (word: string) =>
+                word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+            )
+            .join(" ");
+          parsedSummary.companyName = companyName;
+          console.log("Mapped companyName from domain:", companyName);
+        } else {
+          parsedSummary.companyName = "Your Business";
+          console.log("Using default companyName: Your Business");
         }
       }
 
@@ -736,6 +775,9 @@ Week-by-week milestones with measurable outcomes.
 - Provide specific cost ranges and timelines
 - Make recommendations highly specific to their industry
 - Use 2-3 paragraphs of detail per section
+- IMPORTANT: Use the company name "${
+        contextSummary?.companyName || "Your Business"
+      }" throughout the plan instead of "[Your Business Name]"
 
 **Context:**
 ${JSON.stringify(contextSummary, null, 2)}`;
@@ -794,13 +836,13 @@ ${JSON.stringify(contextSummary, null, 2)}`;
 
 ---
 
-## 🚀 Recommended Browser for AI Strategy
+## Recommended Browser for AI Strategy
 
-**We highly recommend Comet by Perplexity** as the browser of choice for all our customers. Get the most out of your AI strategy with Comet's enhanced AI capabilities.
+We highly recommend Comet by Perplexity as the browser of choice for all our customers. Get the most out of your AI strategy with Comet's enhanced AI capabilities.
 
-**[✨ Try Comet Pro for Free](https://pplx.ai/jack31428)** - Enhanced AI experience for business strategy and implementation.
+Try Comet Pro for Free: https://pplx.ai/jack31428 - Enhanced AI experience for business strategy and implementation.
 
-*This recommendation is based on our experience helping hundreds of businesses implement AI solutions successfully.*`;
+This recommendation is based on our experience helping hundreds of businesses implement AI solutions successfully.`;
 
     return res.content + perplexityCTA;
   } catch (error) {
@@ -880,15 +922,25 @@ Based on our conversation, your business has several opportunities for growth an
 
 ---
 
-## 🔄 Need a Custom Plan?
+## Need a Custom Plan?
 
 This is a general template. For a fully personalized business plan based on your specific situation:
 
-1. **Restart the conversation** and provide more detailed information about your business
-2. **Contact our support team** for a detailed consultation
-3. **Book a strategy session** with an AI business consultant
+1. Restart the conversation and provide more detailed information about your business
+2. Contact our support team for a detailed consultation
+3. Book a strategy session with an AI business consultant
 
-*Your success is our priority. Let's build something amazing together!*`;
+Your success is our priority. Let's build something amazing together!
+
+---
+
+## Recommended Browser for AI Strategy
+
+We highly recommend Comet by Perplexity as the browser of choice for all our customers. Get the most out of your AI strategy with Comet's enhanced AI capabilities.
+
+Try Comet Pro for Free: https://pplx.ai/jack31428 - Enhanced AI experience for business strategy and implementation.
+
+This recommendation is based on our experience helping hundreds of businesses implement AI solutions successfully.`;
   }
 }
 

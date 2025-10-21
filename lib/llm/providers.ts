@@ -292,7 +292,7 @@ async function callAnthropicProvider(
 }
 
 // Health monitoring
-let healthCheckTimers: Record<string, NodeJS.Timeout> = {};
+const healthCheckTimers: Record<string, NodeJS.Timeout> = {};
 
 function startHealthMonitoring() {
   // NVIDIA Primary

@@ -295,7 +295,7 @@ export async function POST(req: NextRequest) {
 
       // Send to NIM for website analysis
       const systemPrompt =
-        'You are a business analyst. Analyze the following website content and extract key business data. Return only valid JSON with these exact fields: productsServices, customerSegment, techStack, marketingStrengths, marketingWeaknesses. Example: {"productsServices": "description", "customerSegment": "description", "techStack": "description", "marketingStrengths": "description", "marketingWeaknesses": "description"}';
+        'You are a business analyst. Analyze the following website content and extract key business data. Return only valid JSON with these exact fields: companyName, productsServices, customerSegment, techStack, marketingStrengths, marketingWeaknesses. For companyName, extract the actual business name (e.g., "Roto-Rooter", "Microsoft", "Apple"). Example: {"companyName": "Business Name", "productsServices": "description", "customerSegment": "description", "techStack": "description", "marketingStrengths": "description", "marketingWeaknesses": "description"}';
 
       let analysisResponse: string | null = null;
       try {
@@ -411,6 +411,10 @@ export async function POST(req: NextRequest) {
         )}`;
 
         const fallbackResult = {
+          companyName: validatedUrl.hostname.replace(
+            /\.(com|org|net|co|us)$/i,
+            ""
+          ),
           productsServices: businessType,
           customerSegment: customerSegment,
           techStack: techStack,
@@ -525,6 +529,7 @@ export async function POST(req: NextRequest) {
 
         analysisResult = json;
         const requiredFields = [
+          "companyName",
           "productsServices",
           "customerSegment",
           "techStack",
@@ -533,7 +538,15 @@ export async function POST(req: NextRequest) {
         ];
         for (const field of requiredFields) {
           if (!analysisResult[field]) {
-            analysisResult[field] = "Unable to determine from website content";
+            if (field === "companyName") {
+              analysisResult[field] = validatedUrl.hostname.replace(
+                /\.(com|org|net|co|us)$/i,
+                ""
+              );
+            } else {
+              analysisResult[field] =
+                "Unable to determine from website content";
+            }
           }
         }
 
@@ -564,6 +577,10 @@ export async function POST(req: NextRequest) {
         )}`;
 
         analysisResult = {
+          companyName: validatedUrl.hostname.replace(
+            /\.(com|org|net|co|us)$/i,
+            ""
+          ),
           productsServices: hasProducts
             ? "Products/services mentioned on website"
             : "Business offerings not clearly specified",
@@ -653,6 +670,9 @@ export async function POST(req: NextRequest) {
           error: "Failed to analyze website",
           details: errorMessage,
           // Provide fallback data so the frontend doesn't break
+          companyName: url
+            ? new URL(url).hostname.replace(/\.(com|org|net|co|us)$/i, "")
+            : "Unknown",
           productsServices: "Website analysis unavailable",
           customerSegment: "Unable to determine",
           techStack: "Standard web technologies",

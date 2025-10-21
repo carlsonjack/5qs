@@ -10,11 +10,26 @@ interface ChatBubbleProps {
   message: string;
   isUser: boolean;
   timestamp?: string;
+  conversationId?: string;
+  messageId?: string;
+  stepNumber?: number;
+  isBusinessPlan?: boolean;
+  appVariant?: string;
 }
 
-export function ChatBubble({ message, isUser, timestamp }: ChatBubbleProps) {
+export function ChatBubble({
+  message,
+  isUser,
+  timestamp,
+  conversationId,
+  messageId,
+  stepNumber,
+  isBusinessPlan,
+  appVariant,
+}: ChatBubbleProps) {
   const [isReading, setIsReading] = useState(false);
   const [feedback, setFeedback] = useState<"up" | "down" | null>(null);
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
 
   const handleCopy = async () => {
     try {
@@ -134,15 +149,58 @@ export function ChatBubble({ message, isUser, timestamp }: ChatBubbleProps) {
     }
   };
 
-  const handleFeedback = (type: "up" | "down") => {
-    setFeedback(type);
-    toast({
-      title: "Feedback recorded",
-      description: `Thank you for your ${
-        type === "up" ? "positive" : "negative"
-      } feedback`,
-      duration: 2000,
-    });
+  const handleFeedback = async (type: "up" | "down") => {
+    if (isSubmittingFeedback) return;
+
+    setIsSubmittingFeedback(true);
+
+    try {
+      // Submit feedback to API
+      const response = await fetch("/api/feedback", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          feedbackType: type === "up" ? "thumbs_up" : "thumbs_down",
+          conversationId,
+          messageId,
+          stepNumber,
+          isBusinessPlan,
+          messageContent: message.substring(0, 1000), // Truncate for storage
+          appVariant,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to save feedback");
+      }
+
+      const result = await response.json();
+
+      if (result.success) {
+        setFeedback(type);
+        toast({
+          title: "Feedback recorded",
+          description: `Thank you for your ${
+            type === "up" ? "positive" : "negative"
+          } feedback`,
+          duration: 2000,
+        });
+      } else {
+        throw new Error(result.error || "Failed to save feedback");
+      }
+    } catch (error) {
+      console.error("Error submitting feedback:", error);
+      toast({
+        title: "Feedback failed",
+        description: "Failed to save your feedback. Please try again.",
+        variant: "destructive",
+        duration: 3000,
+      });
+    } finally {
+      setIsSubmittingFeedback(false);
+    }
   };
 
   return (
@@ -248,9 +306,11 @@ export function ChatBubble({ message, isUser, timestamp }: ChatBubbleProps) {
               variant="ghost"
               size="sm"
               onClick={() => handleFeedback("up")}
+              disabled={isSubmittingFeedback}
               className={cn(
                 "h-7 w-7 p-0 hover:bg-green-100",
-                feedback === "up" && "bg-green-100 text-green-600"
+                feedback === "up" && "bg-green-100 text-green-600",
+                isSubmittingFeedback && "opacity-50"
               )}
             >
               <ThumbsUp className="w-3 h-3" />
@@ -259,9 +319,11 @@ export function ChatBubble({ message, isUser, timestamp }: ChatBubbleProps) {
               variant="ghost"
               size="sm"
               onClick={() => handleFeedback("down")}
+              disabled={isSubmittingFeedback}
               className={cn(
                 "h-7 w-7 p-0 hover:bg-red-100",
-                feedback === "down" && "bg-red-100 text-red-600"
+                feedback === "down" && "bg-red-100 text-red-600",
+                isSubmittingFeedback && "opacity-50"
               )}
             >
               <ThumbsDown className="w-3 h-3" />
