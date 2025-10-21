@@ -1031,6 +1031,7 @@ export function sanitizeQuestion(raw: string, step: number): string {
       match.includes("DataConsidering") ||
       match.includes("DataGiven") ||
       match.includes("VisionFINAL") ||
+      match.includes("QUESTIONLooking") ||
       match.includes("VisionFinal")
     ) {
       return p1 + " " + p2;
@@ -1071,6 +1072,7 @@ export function sanitizeQuestion(raw: string, step: number): string {
     "Streamlining",
     "Enhancing",
     "Developing",
+    "Focusing",
   ];
 
   for (const word of questionWords) {
