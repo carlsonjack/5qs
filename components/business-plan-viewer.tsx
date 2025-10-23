@@ -344,8 +344,8 @@ export function BusinessPlanViewer({
                 <div className="relative text-center py-8">
                   <Lock className="h-8 w-8 mx-auto text-amber-500 mb-2" />
                   <p className="text-sm text-muted-foreground">
-                    Enter your email to unlock the complete plan, download as
-                    PDF, and receive it in your inbox
+                    Tell us where to send the plan! Enter your email to download
+                    as PDF, and receive it in your inbox
                   </p>
                 </div>
               </div>

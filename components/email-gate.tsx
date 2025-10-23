@@ -74,8 +74,8 @@ export function EmailGate({
           Get Your Complete Business Plan
         </CardTitle>
         <CardDescription>
-          Enter your details to unlock the full AI implementation roadmap,
-          download as PDF, and receive it directly in your inbox.
+          Tell us where to send the plan! Enter your email to download as PDF,
+          and receive it in your inbox
         </CardDescription>
       </CardHeader>
       <CardContent>
