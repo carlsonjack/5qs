@@ -216,473 +216,492 @@ async function fetchWebsiteDirectly(url: string): Promise<string> {
 }
 
 export async function POST(req: NextRequest) {
-  return withDatabaseIntegration(req, async (db) => {
-    let url: string = "";
-    const startTime = Date.now();
-    try {
-      const body = await req.json();
-      url = body.url;
-
-      if (!url) {
-        return NextResponse.json({ error: "URL is required" }, { status: 400 });
-      }
-
-      // Validate URL format
-      let validatedUrl: URL;
+  try {
+    return await withDatabaseIntegration(req, async (db) => {
+      let url: string = "";
+      const startTime = Date.now();
       try {
-        validatedUrl = new URL(url);
-        // Ensure it's HTTP or HTTPS
-        if (!["http:", "https:"].includes(validatedUrl.protocol)) {
-          throw new Error("Only HTTP and HTTPS URLs are supported");
-        }
-      } catch {
-        return NextResponse.json(
-          { error: "Invalid URL format. Please include http:// or https://" },
-          { status: 400 }
-        );
-      }
+        const body = await req.json();
+        url = body.url;
 
-      // Track website analysis request
-      await db.trackEvent("website_analysis", "analysis_request", {
-        url: validatedUrl.toString(),
-        domain: validatedUrl.hostname,
-      });
-
-      console.log("Analyzing website:", validatedUrl.toString());
-
-      // Fetch actual website content
-      const websiteContent = await fetchWebsiteContent(validatedUrl.toString());
-
-      if (!websiteContent || websiteContent.trim().length < 20) {
-        throw new Error(
-          "No meaningful content could be extracted from the website"
-        );
-      }
-
-      console.log(
-        "Successfully extracted content, length:",
-        websiteContent.length
-      );
-
-      // Ingest into RAG (chunk + embed) and cache by domain
-      // This is optional - website analysis will work even if RAG fails
-      try {
-        const domain = validatedUrl.hostname;
-        const existing = getCachedDomain(domain);
-        if (!existing) {
-          const chunks = chunkText(websiteContent, 1000, 150);
-          const docIds: string[] = [];
-          await embedDocuments(
-            chunks.map((c, idx) => ({
-              id: `${domain}#${idx}`,
-              text: c.text,
-              meta: { url: validatedUrl.toString(), chunk: idx },
-            }))
+        if (!url) {
+          return NextResponse.json(
+            { error: "URL is required" },
+            { status: 400 }
           );
-          for (let i = 0; i < chunks.length; i++) docIds.push(`${domain}#${i}`);
-          cacheDomain(domain, docIds);
-          console.log(`✅ RAG ingestion successful for ${domain}`);
-        } else {
-          console.log(`✅ Using cached RAG data for ${domain}`);
         }
-      } catch (ingestErr) {
-        console.warn(
-          "⚠️ RAG ingest failed (website) - continuing with analysis:",
-          ingestErr instanceof Error ? ingestErr.message : String(ingestErr)
-        );
-        // Don't throw - let the website analysis continue
-      }
 
-      // Send to NIM for website analysis
-      const systemPrompt =
-        'You are a business analyst. Analyze the following website content and extract key business data. Return only valid JSON with these exact fields: companyName, productsServices, customerSegment, techStack, marketingStrengths, marketingWeaknesses. For companyName, extract the actual business name (e.g., "Roto-Rooter", "Microsoft", "Apple"). Example: {"companyName": "Business Name", "productsServices": "description", "customerSegment": "description", "techStack": "description", "marketingStrengths": "description", "marketingWeaknesses": "description"}';
+        // Validate URL format
+        let validatedUrl: URL;
+        try {
+          validatedUrl = new URL(url);
+          // Ensure it's HTTP or HTTPS
+          if (!["http:", "https:"].includes(validatedUrl.protocol)) {
+            throw new Error("Only HTTP and HTTPS URLs are supported");
+          }
+        } catch {
+          return NextResponse.json(
+            { error: "Invalid URL format. Please include http:// or https://" },
+            { status: 400 }
+          );
+        }
 
-      let analysisResponse: string | null = null;
-      try {
-        console.log("Using NIM for website analysis...");
-        const res = await chatCompletion({
-          messages: [
-            { role: "system", content: systemPrompt },
-            {
-              role: "user",
-              content: `Website content to analyze:\n\n${websiteContent}`,
-            },
-          ],
-          model:
-            process.env.LLM_DEFAULT_MODEL ||
-            "nvidia/llama-3.1-nemotron-ultra-253b-v1",
-          temperature: 0.1,
-          top_p: 0.9,
-          max_tokens: 600, // Increased to prevent JSON truncation
-          nvext: { guided_json: WebsiteAnalysisSchemaForNIM as any },
+        // Track website analysis request
+        await db.trackEvent("website_analysis", "analysis_request", {
+          url: validatedUrl.toString(),
+          domain: validatedUrl.hostname,
         });
-        analysisResponse = res.content;
-      } catch (nimError) {
-        console.error("NIM analysis failed:", nimError);
-        analysisResponse = null;
-      }
 
-      if (!analysisResponse) {
-        console.log("NVIDIA API failed, using enhanced fallback analysis");
+        console.log("Analyzing website:", validatedUrl.toString());
 
-        // Generic fallback analysis that works for any business
-        const content = websiteContent.toLowerCase();
-
-        // Generic business type detection
-        let businessType = "Business website";
-        if (content.includes("service") || content.includes("consulting")) {
-          businessType = "Service-based business";
-        } else if (
-          content.includes("product") ||
-          content.includes("shop") ||
-          content.includes("buy")
-        ) {
-          businessType = "Product-based business";
-        } else if (
-          content.includes("software") ||
-          content.includes("app") ||
-          content.includes("technology")
-        ) {
-          businessType = "Technology business";
-        }
-
-        // Generic customer segment
-        let customerSegment = "General audience";
-        if (
-          content.includes("business") ||
-          content.includes("enterprise") ||
-          content.includes("company")
-        ) {
-          customerSegment = "Business customers";
-        } else if (
-          content.includes("individual") ||
-          content.includes("personal") ||
-          content.includes("home")
-        ) {
-          customerSegment = "Individual consumers";
-        }
-
-        // Generic tech stack
-        let techStack = "Standard web presence";
-        if (content.includes("app") || content.includes("mobile")) {
-          techStack = "Web and mobile platform";
-        } else if (content.includes("online") || content.includes("digital")) {
-          techStack = "Digital platform";
-        }
-
-        // Generic marketing strengths
-        let marketingStrengths = "Professional website presence";
-        if (
-          content.includes("award") ||
-          content.includes("certified") ||
-          content.includes("trusted")
-        ) {
-          marketingStrengths = "Credibility and trust indicators";
-        } else if (
-          content.includes("review") ||
-          content.includes("testimonial") ||
-          content.includes("rating")
-        ) {
-          marketingStrengths = "Customer feedback and social proof";
-        } else if (
-          content.includes("experience") ||
-          content.includes("expertise") ||
-          content.includes("specialist")
-        ) {
-          marketingStrengths = "Industry expertise and experience";
-        }
-
-        // Generic weaknesses
-        let marketingWeaknesses =
-          "Limited analysis available from website content";
-        if (!content.includes("contact") && !content.includes("about")) {
-          marketingWeaknesses = "Limited contact and company information";
-        } else if (
-          !content.includes("pricing") &&
-          !content.includes("cost") &&
-          !content.includes("quote")
-        ) {
-          marketingWeaknesses = "Pricing information not readily available";
-        }
-
-        // Generate screenshot URL using a free service that doesn't require API key
-        const screenshotUrl = `https://mini.s-shot.ru/1280x720/PNG/1280/Z100/?${encodeURIComponent(
-          url
-        )}`;
-
-        const fallbackResult = {
-          companyName: validatedUrl.hostname.replace(
-            /\.(com|org|net|co|us)$/i,
-            ""
-          ),
-          productsServices: businessType,
-          customerSegment: customerSegment,
-          techStack: techStack,
-          marketingStrengths: marketingStrengths,
-          marketingWeaknesses: marketingWeaknesses,
-          contentSample: websiteContent.substring(0, 200) + "...",
-          screenshotUrl: screenshotUrl,
-          fallback: true,
-        };
-
-        // Save fallback analysis to database
-        const processingTime = Date.now() - startTime;
-        console.log(
-          "DEBUG: startTime:",
-          startTime,
-          "currentTime:",
-          Date.now(),
-          "processingTime:",
-          processingTime
+        // Fetch actual website content
+        const websiteContent = await fetchWebsiteContent(
+          validatedUrl.toString()
         );
+
+        if (!websiteContent || websiteContent.trim().length < 20) {
+          throw new Error(
+            "No meaningful content could be extracted from the website"
+          );
+        }
+
+        console.log(
+          "Successfully extracted content, length:",
+          websiteContent.length
+        );
+
+        // Ingest into RAG (chunk + embed) and cache by domain
+        // This is optional - website analysis will work even if RAG fails
+        try {
+          const domain = validatedUrl.hostname;
+          const existing = getCachedDomain(domain);
+          if (!existing) {
+            const chunks = chunkText(websiteContent, 1000, 150);
+            const docIds: string[] = [];
+            await embedDocuments(
+              chunks.map((c, idx) => ({
+                id: `${domain}#${idx}`,
+                text: c.text,
+                meta: { url: validatedUrl.toString(), chunk: idx },
+              }))
+            );
+            for (let i = 0; i < chunks.length; i++)
+              docIds.push(`${domain}#${i}`);
+            cacheDomain(domain, docIds);
+            console.log(`✅ RAG ingestion successful for ${domain}`);
+          } else {
+            console.log(`✅ Using cached RAG data for ${domain}`);
+          }
+        } catch (ingestErr) {
+          console.warn(
+            "⚠️ RAG ingest failed (website) - continuing with analysis:",
+            ingestErr instanceof Error ? ingestErr.message : String(ingestErr)
+          );
+          // Don't throw - let the website analysis continue
+        }
+
+        // Send to NIM for website analysis
+        const systemPrompt =
+          'You are a business analyst. Analyze the following website content and extract key business data. Return only valid JSON with these exact fields: companyName, productsServices, customerSegment, techStack, marketingStrengths, marketingWeaknesses. For companyName, extract the actual business name (e.g., "Roto-Rooter", "Microsoft", "Apple"). Example: {"companyName": "Business Name", "productsServices": "description", "customerSegment": "description", "techStack": "description", "marketingStrengths": "description", "marketingWeaknesses": "description"}';
+
+        let analysisResponse: string | null = null;
+        try {
+          console.log("Using NIM for website analysis...");
+          const res = await chatCompletion({
+            messages: [
+              { role: "system", content: systemPrompt },
+              {
+                role: "user",
+                content: `Website content to analyze:\n\n${websiteContent}`,
+              },
+            ],
+            model:
+              process.env.LLM_DEFAULT_MODEL ||
+              "nvidia/llama-3.1-nemotron-ultra-253b-v1",
+            temperature: 0.1,
+            top_p: 0.9,
+            max_tokens: 600, // Increased to prevent JSON truncation
+            nvext: { guided_json: WebsiteAnalysisSchemaForNIM as any },
+          });
+          analysisResponse = res.content;
+        } catch (nimError) {
+          console.error("NIM analysis failed:", nimError);
+          analysisResponse = null;
+        }
+
+        if (!analysisResponse) {
+          console.log("NVIDIA API failed, using enhanced fallback analysis");
+
+          // Generic fallback analysis that works for any business
+          const content = websiteContent.toLowerCase();
+
+          // Generic business type detection
+          let businessType = "Business website";
+          if (content.includes("service") || content.includes("consulting")) {
+            businessType = "Service-based business";
+          } else if (
+            content.includes("product") ||
+            content.includes("shop") ||
+            content.includes("buy")
+          ) {
+            businessType = "Product-based business";
+          } else if (
+            content.includes("software") ||
+            content.includes("app") ||
+            content.includes("technology")
+          ) {
+            businessType = "Technology business";
+          }
+
+          // Generic customer segment
+          let customerSegment = "General audience";
+          if (
+            content.includes("business") ||
+            content.includes("enterprise") ||
+            content.includes("company")
+          ) {
+            customerSegment = "Business customers";
+          } else if (
+            content.includes("individual") ||
+            content.includes("personal") ||
+            content.includes("home")
+          ) {
+            customerSegment = "Individual consumers";
+          }
+
+          // Generic tech stack
+          let techStack = "Standard web presence";
+          if (content.includes("app") || content.includes("mobile")) {
+            techStack = "Web and mobile platform";
+          } else if (content.includes("online") || content.includes("digital")) {
+            techStack = "Digital platform";
+          }
+
+          // Generic marketing strengths
+          let marketingStrengths = "Professional website presence";
+          if (
+            content.includes("award") ||
+            content.includes("certified") ||
+            content.includes("trusted")
+          ) {
+            marketingStrengths = "Credibility and trust indicators";
+          } else if (
+            content.includes("review") ||
+            content.includes("testimonial") ||
+            content.includes("rating")
+          ) {
+            marketingStrengths = "Customer feedback and social proof";
+          } else if (
+            content.includes("experience") ||
+            content.includes("expertise") ||
+            content.includes("specialist")
+          ) {
+            marketingStrengths = "Industry expertise and experience";
+          }
+
+          // Generic weaknesses
+          let marketingWeaknesses =
+            "Limited analysis available from website content";
+          if (!content.includes("contact") && !content.includes("about")) {
+            marketingWeaknesses = "Limited contact and company information";
+          } else if (
+            !content.includes("pricing") &&
+            !content.includes("cost") &&
+            !content.includes("quote")
+          ) {
+            marketingWeaknesses = "Pricing information not readily available";
+          }
+
+          // Generate screenshot URL using a free service that doesn't require API key
+          const screenshotUrl = `https://mini.s-shot.ru/1280x720/PNG/1280/Z100/?${encodeURIComponent(
+            url
+          )}`;
+
+          const fallbackResult = {
+            companyName: validatedUrl.hostname.replace(
+              /\.(com|org|net|co|us)$/i,
+              ""
+            ),
+            productsServices: businessType,
+            customerSegment: customerSegment,
+            techStack: techStack,
+            marketingStrengths: marketingStrengths,
+            marketingWeaknesses: marketingWeaknesses,
+            contentSample: websiteContent.substring(0, 200) + "...",
+            screenshotUrl: screenshotUrl,
+            fallback: true,
+          };
+
+          // Save fallback analysis to database
+          const processingTime = Date.now() - startTime;
+          await db.saveWebsiteAnalysis({
+            url: validatedUrl.toString(),
+            domain: validatedUrl.hostname,
+            title: validatedUrl.hostname,
+            description: businessType,
+            productsServices: businessType,
+            customerSegment: customerSegment,
+            techStack: techStack,
+            marketingStrengths: marketingStrengths,
+            marketingWeaknesses: marketingWeaknesses,
+            contentSample: websiteContent.substring(0, 200) + "...",
+            analysisMethod: "fallback",
+            processingTime: processingTime,
+            confidence: 0.3,
+          });
+
+          return NextResponse.json(fallbackResult);
+        }
+
+        let analysisResult;
+
+        try {
+          // Try parsing with enhanced repair strategies
+          let json;
+          try {
+            json = JSON.parse(analysisResponse);
+          } catch (parseError) {
+            console.error("JSON parse error:", parseError);
+            console.error("Raw content:", analysisResponse.substring(0, 500));
+
+            // Try multiple repair strategies
+            let repairedJson: any = null;
+
+            // Strategy 1: Extract JSON object from surrounding text
+            const jsonMatch = analysisResponse.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              try {
+                json = JSON.parse(jsonMatch[0]);
+                console.log("✓ Repaired JSON by extracting object");
+                repairedJson = json;
+              } catch (e) {
+                // Continue to next strategy
+              }
+            }
+
+            // Strategy 2: Fix incomplete JSON by adding missing closing braces and quotes
+            if (!repairedJson && jsonMatch) {
+              let attempt = jsonMatch[0];
+
+              // Remove trailing incomplete keys/values
+              attempt = attempt.replace(/,\s*"[^"]*"?\s*:?\s*"?[^"]*$/g, "");
+              attempt = attempt.replace(/,\s*"[^"]*"?\s*:?\s*$/g, "");
+
+              // Count and fix braces
+              const openBraces = (attempt.match(/\{/g) || []).length;
+              const closeBraces = (attempt.match(/\}/g) || []).length;
+              if (openBraces > closeBraces) {
+                attempt += "}".repeat(openBraces - closeBraces);
+              }
+
+              try {
+                json = JSON.parse(attempt);
+                console.log("✓ Repaired JSON by fixing incomplete structure");
+                repairedJson = json;
+              } catch (e) {
+                console.error("JSON structure repair failed:", e);
+              }
+            }
+
+            // Strategy 3: Build valid JSON from partial data
+            if (!repairedJson) {
+              const fieldPattern = /"(\w+)"\s*:\s*"([^"]*)"/g;
+              const matches = [...analysisResponse.matchAll(fieldPattern)];
+              if (matches.length > 0) {
+                const obj: any = {};
+                matches.forEach(([, key, value]) => {
+                  obj[key] = value;
+                });
+                json = obj;
+                console.log(
+                  "✓ Rebuilt JSON from field matches:",
+                  Object.keys(obj)
+                );
+                repairedJson = json;
+              }
+            }
+
+            if (!repairedJson) {
+              throw parseError;
+            }
+          }
+
+          analysisResult = json;
+          const requiredFields = [
+            "companyName",
+            "productsServices",
+            "customerSegment",
+            "techStack",
+            "marketingStrengths",
+            "marketingWeaknesses",
+          ];
+          for (const field of requiredFields) {
+            if (!analysisResult[field]) {
+              if (field === "companyName") {
+                analysisResult[field] = validatedUrl.hostname.replace(
+                  /\.(com|org|net|co|us)$/i,
+                  ""
+                );
+              } else {
+                analysisResult[field] =
+                  "Unable to determine from website content";
+              }
+            }
+          }
+
+          // Add screenshot URL to the main analysis result
+          const screenshotUrl = `https://mini.s-shot.ru/1280x720/PNG/1280/Z100/?${encodeURIComponent(
+            url
+          )}`;
+          analysisResult.screenshotUrl = screenshotUrl;
+        } catch (parseError) {
+          console.error(
+            "Error parsing NVIDIA response after all repair attempts:",
+            parseError
+          );
+          console.log("Raw NVIDIA response:", analysisResponse);
+
+          // Fallback: create structured response based on content analysis
+          const hasProducts = /product|service|solution|offer/i.test(
+            websiteContent
+          );
+          const hasContact = /contact|about|team|company/i.test(websiteContent);
+          const hasTech = /api|integration|software|platform|technology/i.test(
+            websiteContent
+          );
+
+          // Generate screenshot URL using a free service that doesn't require API key
+          const screenshotUrl = `https://mini.s-shot.ru/1280x720/PNG/1280/Z100/?${encodeURIComponent(
+            url
+          )}`;
+
+          analysisResult = {
+            companyName: validatedUrl.hostname.replace(
+              /\.(com|org|net|co|us)$/i,
+              ""
+            ),
+            productsServices: hasProducts
+              ? "Products/services mentioned on website"
+              : "Business offerings not clearly specified",
+            customerSegment: hasContact
+              ? "Professional business audience"
+              : "General audience",
+            techStack: hasTech
+              ? "Technology-focused business"
+              : "Standard web presence",
+            // Do not treat these as user-declared pain points or goals
+            marketingStrengths: "Professional website presence",
+            marketingWeaknesses: "Limited detailed analysis available",
+            contentSample: websiteContent.substring(0, 200) + "...", // Include sample for debugging
+            screenshotUrl: screenshotUrl,
+          };
+        }
+
+        console.log("Website analysis result:", analysisResult);
+
+        // Save successful analysis to database
+        const processingTimeSuccess = Date.now() - startTime;
         await db.saveWebsiteAnalysis({
           url: validatedUrl.toString(),
           domain: validatedUrl.hostname,
-          title: validatedUrl.hostname,
-          description: businessType,
-          productsServices: businessType,
-          customerSegment: customerSegment,
-          techStack: techStack,
-          marketingStrengths: marketingStrengths,
-          marketingWeaknesses: marketingWeaknesses,
-          contentSample: websiteContent.substring(0, 200) + "...",
-          analysisMethod: "fallback",
-          processingTime: processingTime,
-          confidence: 0.3,
+          title: analysisResult.productsServices || validatedUrl.hostname,
+          description: analysisResult.customerSegment || "Website analysis",
+          productsServices: analysisResult.productsServices,
+          customerSegment: analysisResult.customerSegment,
+          techStack: analysisResult.techStack,
+          marketingStrengths: analysisResult.marketingStrengths,
+          marketingWeaknesses: analysisResult.marketingWeaknesses,
+          contentSample:
+            analysisResult.contentSample ||
+            websiteContent.substring(0, 200) + "...",
+          analysisMethod: "nvidia_api",
+          processingTime: processingTimeSuccess,
+          confidence: 0.8,
         });
 
-        return NextResponse.json(fallbackResult);
-      }
+        // Track successful analysis completion
+        await db.trackEvent("website_analysis", "analysis_completed", {
+          url: validatedUrl.toString(),
+          domain: validatedUrl.hostname,
+          analysisMethod: "nvidia_api",
+          contentLength: websiteContent.length,
+        });
 
-      let analysisResult;
+        const safe = { ...analysisResult };
+        // Light output filtering
+        for (const k of Object.keys(safe)) {
+          if (typeof (safe as any)[k] === "string") {
+            (safe as any)[k] = filterOutput((safe as any)[k]).text;
+          }
+        }
+        return NextResponse.json(safe);
+      } catch (error) {
+        console.error("Error analyzing website:", error);
 
-      try {
-        // Try parsing with enhanced repair strategies
-        let json;
+        // Log system health for debugging
         try {
-          json = JSON.parse(analysisResponse);
-        } catch (parseError) {
-          console.error("JSON parse error:", parseError);
-          console.error("Raw content:", analysisResponse.substring(0, 500));
-
-          // Try multiple repair strategies
-          let repairedJson: any = null;
-
-          // Strategy 1: Extract JSON object from surrounding text
-          const jsonMatch = analysisResponse.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            try {
-              json = JSON.parse(jsonMatch[0]);
-              console.log("✓ Repaired JSON by extracting object");
-              repairedJson = json;
-            } catch (e) {
-              // Continue to next strategy
-            }
-          }
-
-          // Strategy 2: Fix incomplete JSON by adding missing closing braces and quotes
-          if (!repairedJson && jsonMatch) {
-            let attempt = jsonMatch[0];
-
-            // Remove trailing incomplete keys/values
-            attempt = attempt.replace(/,\s*"[^"]*"?\s*:?\s*"?[^"]*$/g, "");
-            attempt = attempt.replace(/,\s*"[^"]*"?\s*:?\s*$/g, "");
-
-            // Count and fix braces
-            const openBraces = (attempt.match(/\{/g) || []).length;
-            const closeBraces = (attempt.match(/\}/g) || []).length;
-            if (openBraces > closeBraces) {
-              attempt += "}".repeat(openBraces - closeBraces);
-            }
-
-            try {
-              json = JSON.parse(attempt);
-              console.log("✓ Repaired JSON by fixing incomplete structure");
-              repairedJson = json;
-            } catch (e) {
-              console.error("JSON structure repair failed:", e);
-            }
-          }
-
-          // Strategy 3: Build valid JSON from partial data
-          if (!repairedJson) {
-            const fieldPattern = /"(\w+)"\s*:\s*"([^"]*)"/g;
-            const matches = [...analysisResponse.matchAll(fieldPattern)];
-            if (matches.length > 0) {
-              const obj: any = {};
-              matches.forEach(([, key, value]) => {
-                obj[key] = value;
-              });
-              json = obj;
-              console.log(
-                "✓ Rebuilt JSON from field matches:",
-                Object.keys(obj)
-              );
-              repairedJson = json;
-            }
-          }
-
-          if (!repairedJson) {
-            throw parseError;
-          }
+          await db.logSystemHealth({
+            service: "website_analysis_api",
+            endpoint: "/api/analyze/website",
+            method: "POST",
+            success: false,
+            errorMessage:
+              error instanceof Error ? error.message : String(error),
+            errorType: "api_error",
+          });
+        } catch (logErr) {
+          console.error("Failed to log system health:", logErr);
         }
 
-        analysisResult = json;
-        const requiredFields = [
-          "companyName",
-          "productsServices",
-          "customerSegment",
-          "techStack",
-          "marketingStrengths",
-          "marketingWeaknesses",
-        ];
-        for (const field of requiredFields) {
-          if (!analysisResult[field]) {
-            if (field === "companyName") {
-              analysisResult[field] = validatedUrl.hostname.replace(
-                /\.(com|org|net|co|us)$/i,
-                ""
-              );
-            } else {
-              analysisResult[field] =
-                "Unable to determine from website content";
-            }
-          }
-        }
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error occurred";
 
-        // Add screenshot URL to the main analysis result
+        // Generate screenshot URL even for error cases
         const screenshotUrl = `https://mini.s-shot.ru/1280x720/PNG/1280/Z100/?${encodeURIComponent(
-          url
-        )}`;
-        analysisResult.screenshotUrl = screenshotUrl;
-      } catch (parseError) {
-        console.error(
-          "Error parsing NVIDIA response after all repair attempts:",
-          parseError
-        );
-        console.log("Raw NVIDIA response:", analysisResponse);
-
-        // Fallback: create structured response based on content analysis
-        const hasProducts = /product|service|solution|offer/i.test(
-          websiteContent
-        );
-        const hasContact = /contact|about|team|company/i.test(websiteContent);
-        const hasTech = /api|integration|software|platform|technology/i.test(
-          websiteContent
-        );
-
-        // Generate screenshot URL using a free service that doesn't require API key
-        const screenshotUrl = `https://mini.s-shot.ru/1280x720/PNG/1280/Z100/?${encodeURIComponent(
-          url
+          url || "about:blank"
         )}`;
 
-        analysisResult = {
-          companyName: validatedUrl.hostname.replace(
-            /\.(com|org|net|co|us)$/i,
-            ""
-          ),
-          productsServices: hasProducts
-            ? "Products/services mentioned on website"
-            : "Business offerings not clearly specified",
-          customerSegment: hasContact
-            ? "Professional business audience"
-            : "General audience",
-          techStack: hasTech
-            ? "Technology-focused business"
-            : "Standard web presence",
-          // Do not treat these as user-declared pain points or goals
-          marketingStrengths: "Professional website presence",
-          marketingWeaknesses: "Limited detailed analysis available",
-          contentSample: websiteContent.substring(0, 200) + "...", // Include sample for debugging
-          screenshotUrl: screenshotUrl,
-        };
-      }
-
-      console.log("Website analysis result:", analysisResult);
-
-      // Save successful analysis to database
-      const processingTimeSuccess = Date.now() - startTime;
-      console.log(
-        "DEBUG SUCCESS: startTime:",
-        startTime,
-        "currentTime:",
-        Date.now(),
-        "processingTime:",
-        processingTimeSuccess
-      );
-      await db.saveWebsiteAnalysis({
-        url: validatedUrl.toString(),
-        domain: validatedUrl.hostname,
-        title: analysisResult.productsServices || validatedUrl.hostname,
-        description: analysisResult.customerSegment || "Website analysis",
-        productsServices: analysisResult.productsServices,
-        customerSegment: analysisResult.customerSegment,
-        techStack: analysisResult.techStack,
-        marketingStrengths: analysisResult.marketingStrengths,
-        marketingWeaknesses: analysisResult.marketingWeaknesses,
-        contentSample:
-          analysisResult.contentSample ||
-          websiteContent.substring(0, 200) + "...",
-        analysisMethod: "nvidia_api",
-        processingTime: processingTimeSuccess,
-        confidence: 0.8,
-      });
-
-      // Track successful analysis completion
-      await db.trackEvent("website_analysis", "analysis_completed", {
-        url: validatedUrl.toString(),
-        domain: validatedUrl.hostname,
-        analysisMethod: "nvidia_api",
-        contentLength: websiteContent.length,
-      });
-
-      const safe = { ...analysisResult };
-      // Light output filtering
-      for (const k of Object.keys(safe)) {
-        if (typeof (safe as any)[k] === "string") {
-          (safe as any)[k] = filterOutput((safe as any)[k]).text;
+        // Safe extraction of hostname for fallback
+        let fallbackHostname = "Business";
+        try {
+          if (url) {
+            const tempUrl = url.includes("://") ? url : `https://${url}`;
+            fallbackHostname = new URL(tempUrl).hostname.replace(
+              /\.(com|org|net|co|us)$/i,
+              ""
+            );
+          }
+        } catch {
+          // Keep default
         }
+
+        return NextResponse.json(
+          {
+            error: "Failed to analyze website",
+            details: errorMessage,
+            // Provide fallback data so the frontend doesn't break
+            companyName: fallbackHostname,
+            productsServices: "Website analysis unavailable",
+            customerSegment: "Unable to determine",
+            techStack: "Standard web technologies",
+            marketingStrengths: "Professional web presence",
+            marketingWeaknesses: "Analysis could not be completed",
+            screenshotUrl: screenshotUrl,
+            fallback: true,
+          },
+          { status: 200 } // Return 200 instead of 500 to prevent frontend errors
+        );
       }
-      return NextResponse.json(safe);
-    } catch (error) {
-      console.error("Error analyzing website:", error);
-
-      // Log system health for debugging
-      await db.logSystemHealth({
-        service: "website_analysis_api",
-        endpoint: "/api/analyze/website",
-        method: "POST",
-        success: false,
-        errorMessage: error instanceof Error ? error.message : String(error),
-        errorType: "api_error",
-      });
-
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error occurred";
-
-      // Generate screenshot URL even for error cases
-      const screenshotUrl = `https://mini.s-shot.ru/1280x720/PNG/1280/Z100/?${encodeURIComponent(
-        url
-      )}`;
-
-      return NextResponse.json(
-        {
-          error: "Failed to analyze website",
-          details: errorMessage,
-          // Provide fallback data so the frontend doesn't break
-          companyName: url
-            ? new URL(url).hostname.replace(/\.(com|org|net|co|us)$/i, "")
-            : "Unknown",
-          productsServices: "Website analysis unavailable",
-          customerSegment: "Unable to determine",
-          techStack: "Standard web technologies",
-          marketingStrengths: "Professional web presence",
-          marketingWeaknesses: "Analysis could not be completed",
-          screenshotUrl: screenshotUrl,
-          fallback: true,
-        },
-        { status: 200 } // Return 200 instead of 500 to prevent frontend errors
-      );
-    }
-  });
+    });
+  } catch (criticalError) {
+    console.error("CRITICAL ERROR in /api/analyze/website route:", criticalError);
+    return NextResponse.json(
+      {
+        error: "Internal server error during website analysis",
+        details: criticalError instanceof Error ? criticalError.message : String(criticalError),
+        fallback: true,
+      },
+      { status: 500 }
+    );
+  }
 }
